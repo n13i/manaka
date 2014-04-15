@@ -1,0 +1,145 @@
+/**
+ * MX kernel 7
+ * IM で送受信するメッセージの操作を行う
+ *
+ * @author  n13i <n13i@m2hq.net>
+ *
+ * @version 0.1.0
+ * @date    2006/11/13 作成
+ *
+ * @file
+ * @ingroup Message
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+
+string MESSAGE_BOUNDARY = ".\n";
+
+string message_headers[];
+string message_body = "";
+
+
+/**
+ * 新しいメッセージを作成する
+ */
+void Message_new()
+{
+    emptyof message_headers;
+    message_body = "";
+}
+
+/**
+ * 文字列から新しいメッセージを作成する
+ */
+void Message_newFromString(string message)
+{
+    int pos;
+    string header;
+
+    pos = StrIndexOf(message, MESSAGE_BOUNDARY, 0);
+
+    if(pos == 0)
+    {
+        header = "";
+    }
+    else
+    {
+        header = StrSubstring(message, 0, pos - 1);
+    }
+    message_body = StrSubstring(message,
+                                pos + StrLen(MESSAGE_BOUNDARY),
+                                StrLen(message) - 1);
+
+    int i;
+    string token;
+
+    for(i = 0; (token = StrToken(header, "\n", i)) != NULL; i++)
+    {
+        message_headers[i] = token;
+    }
+}
+
+string Message_getAll()
+{
+    string message = "";
+    int i;
+
+    for(i = 0; i < lengthof message_headers; i++)
+    {
+        message += message_headers[i] + "\n";
+    }
+
+    message += MESSAGE_BOUNDARY;
+    message += message_body;
+
+    return message;
+}
+
+/**
+ * 指定したキーのヘッダを得る
+ */
+string Message_getHeader(string key)
+{
+    int i;
+
+    for(i = 0; i < lengthof message_headers; i++)
+    {
+        string header = message_headers[i];
+        if(StrToken(header, "=", 0) == key)
+        {
+            return StrSubstring(header, StrLen(key) + 1, StrLen(header) - 1);
+        }
+    }
+
+    return "";
+}
+
+/**
+ * メッセージ本文を得る
+ */
+string Message_getBody()
+{
+    return message_body;
+}
+
+/**
+ * メッセージにヘッダを追加する
+ */
+void Message_addHeader(string key, string value)
+{
+    int n = lengthof message_headers;
+
+    message_headers[n] = key + "=" + value;
+}
+
+/**
+ * メッセージの本文を設定する
+ */
+void Message_setBody(string message)
+{
+    message_body = message;
+}
+
+void Message_addQuote()
+{
+    string CR = StrDecodeURL("%0d");
+    string LF = StrDecodeURL("%0a");
+
+    message_body = StrReplace(message_body, LF, LF + "> ");
+    message_body = "> " + message_body + CR + LF;
+}
+
+string Message_formatTime(int time)
+{
+    string datetime = "";
+
+    datetime += itoa(toYear(time)) + "/";
+    datetime += itos("02d", toMonth(time)) + "/";
+    datetime += itos("02d", toDate(time)) + " ";
+    datetime += itos("02d", toHour(time)) + ":";
+    datetime += itos("02d", toMinute(time)) + ":";
+    datetime += itos("02d", toSecond(time));
+
+    return datetime;
+}

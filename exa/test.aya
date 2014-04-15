@@ -1,0 +1,1716 @@
+/**
+ * テストコード
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "plugin/db/db.h"
+//#import "plugin/morphalyzer.h"
+//#import "plugin/tts.h"
+//#import "plugin/lf-rssreader.h"
+#import "lf-Wmpp.h"
+#import "core/lib/xml/xml.h"
+#import "core/lib/ini/ini.h"
+#import "core/lib/mxcl/mxcl.h"
+int mxcl_parseFetFile(string fet, string hashes[], string types[],
+                      int sizes[], string files[]);
+#import "core/lib/mxcl/pwsconst.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+string ict_getRandomItem(string src);
+int ict_searchPairParenthesis(string str, int lparen);
+int ict_getStatements(string str, string cmds[]);
+#import "core/ui.h"
+#import "core/surface.h"
+#import "core/iccomm.h"
+//#import "core/emoticon.h"
+#import "core/msgbox.h"
+//#import "core/mordsmorth.h"
+#import "core/icon.h"
+//#import "notifywindow.h"
+//#import "rss.h"
+#import "mi.h"
+//#import "migration.h"
+//#import "version.h"
+#import "properties.h"
+
+
+import int LF_BIFF_OpenConfigDialog();
+
+void Test_init()
+{
+    MenuItemAdd("テストメニュー",
+                PWS_MENU_NORMAL, 0, PWS_CB_NORMAL,
+                test_onClick, "");
+}
+
+void test_onClick(string item, string param)
+{
+    MsgBox_pushSize();
+    Test_menu();
+    MsgBox_popSize();
+}
+
+void Test_menu()
+{
+    int waitmode;
+    boolean topMenuLoop = true;
+    int menuPage = 0;
+
+    MsgBox_setSize(20, 25);
+
+    while(topMenuLoop)
+    {
+        waitmode = GetTalkWaitMode();
+        SetTalkWaitMode(PWS_TALK_NOWAIT);
+
+        if(menuPage == 0)
+        {
+            UI_showTitle("テストメニュー");
+
+            AddItem("カーネル")
+            {
+                menuPage = 4;
+            }
+            AddItem("ライブラリ")
+            {
+                menuPage = 2;
+            }
+            AddItem("プラグイン")
+            {
+                menuPage = 1;
+            }
+            AddItem("その他")
+            {
+                menuPage = 3;
+            }
+            AddCancelItem
+            {
+                topMenuLoop = false;
+            }
+        }
+        else if(menuPage == 1)
+        {
+            UI_showTitle("プラグイン");
+
+            AddItem("DB")
+            {
+                test_SQLite();
+            }
+            AddItem("形態素解析")
+            {
+                test_NH_MA();
+            }
+            AddItem("RSSリーダ")
+            {
+                test_RSS();
+            }
+            AddItem("Text-to-Speech")
+            {
+                test_TTS();
+            }
+            AddItem("メディアプレーヤ連携")
+            {
+                test_WMPP();
+            }
+            AddCancelItem
+            {
+                menuPage = 0;
+            }
+        }
+        else if(menuPage == 2)
+        {
+            UI_showTitle("ライブラリ");
+
+            AddItem("xml")
+            {
+                test_XML();
+            }
+            AddItem("ini")
+            {
+                test_INI();
+            }
+            AddItem("MXCL")
+            {
+                test_libMXCL();
+            }
+            AddCancelItem
+            {
+                menuPage = 0;
+            }
+        }
+        else if(menuPage == 3)
+        {
+            UI_showTitle("その他");
+
+            AddItem("Graphics performance test")
+            {
+                int time_ms;
+                int method = -1;
+
+                Talk("\eMethod:\n");
+
+                AddItem("Traditional graphics functions")
+                {
+                    method = 0;
+                }
+                AddItem("Bitmap Handle functions")
+                {
+                    method = 1;
+                }
+                AddItem("Bitmap Handle functions (with stretch)")
+                {
+                    method = 2;
+                }
+                AddItem("Bitmap Handle functions (with smooth stretch)")
+                {
+                    method = 3;
+                }
+                Choice;
+
+                if(method >= 0)
+                {
+                    time_ms = test_GraphicsPerformance(method, 100);
+                    Talk("\e"+itoa(time_ms)+" ms\c\n");
+                    LoadBitmap( "img\\base.hp3" );
+                    DisplayImage( 0 );
+                }
+            }
+            AddItem("CaptureWindow")
+            {
+                test_CaptureWindow();
+            }
+            AddItem("SaveProperty")
+            {
+                SaveProperty();
+            }
+            AddItem("プロパティツリー")
+            {
+                int waitmode = GetTalkWaitMode();
+                SetTalkWaitMode(PWS_TALK_NOWAIT);
+
+                boolean l = true;
+
+                while(l)
+                {
+                    UI_showTitle("Property Tree Viewer");
+
+                    AddItem("\\User")
+                    {
+                        test_viewPropertyTree("\\User");
+                    }
+                    AddItem("\\System")
+                    {
+                        test_viewPropertyTree("\\System");
+                    }
+                    AddItem("\\Vendor")
+                    {
+                        test_viewPropertyTree("\\Vendor");
+                    }
+                    AddItem("..\\System")
+                    {
+                        test_viewPropertyTree("..\\System");
+                    }
+                    AddItem("..\\Vendor")
+                    {
+                        test_viewPropertyTree("..\\Vendor");
+                    }
+                    AddItem("\\Plugin")
+                    {
+                        test_viewPropertyTree("\\Plugin");
+                    }
+                    AddCancelItem
+                    {
+                        l = false;
+                    }
+                    Choice;
+                }
+
+                SetTalkWaitMode(waitmode);
+            }
+            AddItem("GetHTTP")
+            {
+                string url = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                string content = GetHTTP(url, "", PWS_NETWORK_METHOD_GET, 10000);
+                Talk("result = " + GetProperty("..\\System\\HttpResult") + "\c\n");
+                Talk(content + "\p");
+            }
+            AddItem("Tokenize")
+            {
+                string target = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                string pattern = "s/([々亜-煕ヵヶ]+|[ー～ぁ-ん]+|[ー～ァ-ヴ]+|[a-zA-Z0-9_\-]+|[ａ-ｚＡ-Ｚ０-９＿－]+|[Α-ω]+|[А-я]+|[、。！!？?()（）「」『』・]+|\n)/$1\n/kg";
+
+                string result = BREGSubst(pattern, target);
+                if(result == NULL)
+                {
+                    Talk("NULL\p");
+                }
+                else
+                {
+                    Talk(result + "\p");
+                }
+            }
+//            AddItem("バージョン情報")
+//            {
+//                Version_info();
+//                Talk("\p");
+//            }
+            AddItem("まなかいぢり")
+            {
+                test_MI();
+            }
+            AddItem("記憶移行")
+            {
+                Prop_migrateFromV2();
+            }
+            AddItem("L11GetPersonas")
+            {
+                string pid = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                if(pid != NULL && pid != "")
+                {
+                    int handle;
+                    if(L11GetPersonas(handle, pid) == 1)
+                    {
+                        int resp;
+                        while((resp = L11WaitResponse(handle, 50)) == -24)
+                        {
+                            Wait(0);
+                        }
+
+                        if(resp == 1)
+                        {
+                            string persona[];
+                            L11GetResponseGetPersonas(handle, persona);
+
+                            int i;
+                            for(i = 0; i < lengthof persona; i++)
+                            {
+                                Talk(persona[i] + "\n");
+                            }
+                            Talk("\p");
+                        }
+
+                        L11CloseHandle(handle);
+                    }
+                }
+            }
+            AddCancelItem
+            {
+                menuPage = 0;
+            }
+        }
+        else if(menuPage == 4)
+        {
+            UI_showTitle("カーネル");
+
+            AddItem("Sprict")
+            {
+                test_Sprict();
+            }
+            AddItem("Surface debug")
+            {
+                Surface_debug();
+            }
+            AddItem("MordsMorth")
+            {
+                test_MordsMorth();
+            }
+            AddItem("ICComm")
+            {
+                test_ICComm();
+            }
+            AddItem("EmotIcon")
+            {
+                test_EmotIcon();
+            }
+//            AddItem("NotifyWindow")
+//            {
+//                boolean loop = true;
+//
+//                while(loop)
+//                {
+//                    AddItem("Create")
+//                    {
+//                        int r;
+//
+//                        r = NotifyWindow_init();
+//                        Talk("r = " + itoa(r) + "\p\n");
+//                    }
+//                    AddItem("Test")
+//                    {
+//                        NotifyWindow_showMessage("通知テスト",
+//                                                 "ほげほげ\nふがふが\nもふもふ");
+//                    }
+//                    AddItem("Destroy")
+//                    {
+//                        NotifyWindow_destroy();
+//                    }
+//                    AddCancelItem
+//                    {
+//                        loop = false;
+//                    }
+//                    Choice;
+//                }
+//            }
+            AddItem("MsgBox")
+            {
+                string style = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                MsgBox_setStyle(style);
+            }
+            AddItem("UI")
+            {
+                test_UI();
+            }
+            AddCancelItem
+            {
+                menuPage = 0;
+            }
+        }
+        Choice;
+
+        SetTalkWaitMode(waitmode);
+    }
+
+    MsgBox_setSize(20, 10);
+}
+
+void test_showProperty(string tree, int level)
+{
+    int i;
+    string value;
+    string indent = "";
+
+    for(i = 0; i < level; i++)
+    {
+        indent += "  ";
+    }
+
+    Talk(indent + "\fb" + StrReplace(tree, "\\", "\\\\") + ":\_fb\n");
+    for(i = 0; (value = EnumChildProperty(tree, i)) != NULL; i++)
+    {
+        string key = tree + "\\" + value;
+
+        if(PropertyTreeExists(key))
+        {
+            test_showProperty(key, level + 1);
+        }
+        else
+        {
+            string propvalue = GetProperty(key);
+
+            Talk(indent + value + " = ");
+
+            if(propvalue == NULL)
+            {
+                Talk("NULL");
+            }
+            else
+            {
+                Talk(StrReplace(GetProperty(key), "\\", "\\\\"));
+            }
+            Talk("\n");
+        }
+        Wait(0);
+    }
+}
+
+void test_viewPropertyTree(string current_key)
+{
+    string current_key_escaped = StrReplace(current_key, "\\", "\\\\");
+
+    if(PropertyTreeExists(current_key))
+    {
+        while(true)
+        {
+            int i;
+            string tree[][];
+            string value;
+
+            UI_showTitle(current_key_escaped);
+
+            for(i = 0; (value = EnumChildProperty(current_key, i)) != NULL; i++)
+            {
+                string key = "\\" + value;
+
+                if(current_key != "\\")
+                {
+                    key = current_key + key;
+                }
+
+                tree[0][i] = key;
+                if(PropertyTreeExists(key))
+                {
+                    tree[1][i] = ICON_FOLDER + " " + value;
+                }
+                else
+                {
+                    string propvalue = GetProperty(key);
+                    tree[1][i] = ICON_FILE + " " + value + " = " + propvalue;
+                }
+            }
+
+            int sel;
+            if((sel = UI_listBox(tree[1], 0, -1, true)) == -1)
+            {
+                break;
+            }
+
+            test_viewPropertyTree(tree[0][sel]);
+        }
+    }
+    else
+    {
+        string key = "";
+        string key_tree[];
+        if(BREGSplit("/\\\\/", current_key, key_tree) > 0)
+        {
+            int n = lengthof key_tree;
+            key = key_tree[n - 1];
+        }
+
+        string pref[][];
+        string result[];
+
+        UI_prefCreateItem(pref, 0, current_key, UI_PREF_TYPE_INPUT,
+                          "値", "", "", "");
+        UI_prefCreateItem(pref, 1, "del", UI_PREF_TYPE_CHECKBOX,
+                          "削除する", "", "0,1", "0");
+
+        if(UI_prefDialog(key, pref, result) == 1)
+        {
+            int i;
+
+            for(i = 0; i < lengthof result; i++)
+            {
+                string id = UI_prefGetID(pref, i);
+
+                if(id == current_key)
+                {
+                    PutProperty(current_key, result[i]);
+                }
+                else if(id == "del" && result[i] == "1")
+                {
+                    DelProperty(current_key);
+                }
+            }
+        }
+    }
+}
+
+void test_XML()
+{
+    int xmlh;
+    //int doch;
+    string xml;
+    int i;
+
+    Talk("[libxml.exa version " + XML_getVersion() + "]\n\n");
+
+    xmlh = XML_new();
+    Talk("xmlh = "+itoa(xmlh)+"\n");
+
+    AddItem("from string")
+    {
+        xml = "<test attr=\"hoge\"><moge>aaa</moge><foo aaa=\"bbb\" /></test>";
+        Talk("\eEnter XML:\n");
+        xml = EditBox(0, 1024, xml);
+    }
+    AddItem("from url")
+    {
+        Talk("\eEnter XML url:\n");
+        string url = EditBox(0, 1024, "");
+        xml = GetHTTP(url, "", 0, 30000);
+    }
+    Choice;
+
+    XML_parse(xmlh, xml, true);
+//        Talk("doch = "+itoa(doch)+"\n");
+
+//        XML_test(xmlh, doch);
+
+    int result;
+    while((result = XML_readNextNode(xmlh)) >= 0)
+    {
+        string path;
+        string data;
+        string attr[][];
+        int type = XML_getNode(xmlh, path, data, attr);
+
+/*
+        Talk("["+path+"]\n");
+        Talk("  type="+XML_nodeTypeToString(type)+"\n");
+        Talk("  data="+data+"\n");
+        if(lengthof attr > 0)
+        {
+            int i;
+            for(i = 0; i < lengthof attr; i++)
+            {
+                Talk("  ["+attr[i][0]+" = "+attr[i][1]+"]\n");
+            }
+        }
+*/
+        if(type == XML_NODE_ELEMENT)
+        {
+            Talk("<"+data);
+            if(lengthof attr > 0)
+            {
+                int i;
+                for(i = 0; i < lengthof attr; i++)
+                {
+                    Talk(" "+attr[i][0]+"=\""+attr[i][1]+"\"");
+                }
+            }
+            Talk(">\n");
+        }
+        else if(type == XML_EVENT_ENDELEMENT)
+        {
+            Talk("</"+data+">\n");
+        }
+        else
+        {
+            Talk(data+"\n");
+        }
+    }
+
+/*
+    int elements[];
+    XMLDOM_getElementsByTagName(xmlh, doch, "item", elements);
+    for(i = 0; i < lengthof elements; i++)
+    {
+        Talk("["+itoa(elements[i])+"]\n");
+        Talk(XMLDOM_getAttribute(xmlh, doch, elements[i], "rdf:about")+"\n");
+    }
+*/
+
+    XML_destroy(xmlh);
+    Talk("\p");
+}
+
+
+void test_SQLite()
+{
+    int dbh;
+    string array[];
+    string dbfile = "";
+
+    AddItem("on memory")
+    {
+        dbfile = ":memory:";
+    }
+    AddItem("dbfile")
+    {
+        dbfile = "local\\temp\\test.db";
+    }
+    AddItem("NULL")
+    {
+        dbfile = NULL;
+    }
+    Choice;
+
+    Talk("dbfile = [" + dbfile + "]\n\n");
+
+    if((dbh = LF_DB_Open(dbfile)) <= 0)
+    {
+        Talk("db open failed\n");
+    }
+    else
+    {
+        LF_DB_Exec(dbh, "BEGIN TRANSACTION");
+
+        LF_DB_Exec(dbh, "CREATE TABLE test ( id INTEGER PRIMARY KEY, data VARCHAR )");
+        LF_DB_Exec(dbh, "INSERT INTO test ( data ) VALUES ( 'hoge' )");
+
+        int sh = LF_DB_Start(dbh, "SELECT * FROM test");
+        Talk("sh = "+itoa(sh)+"\n");
+        if(sh > 0)
+        {
+            while(LF_DB_Step(sh) == 0)
+            {
+                int i;
+
+                LF_DB_ColumnTextAll(sh, array);
+                for(i = 0; i < lengthof array; i++)
+                {
+                    Talk(array[i]+"|");
+                }
+                Talk("\n");
+            }
+            LF_DB_End(sh);
+        }
+
+        LF_DB_Exec(dbh, "END TRANSACTION");
+
+        if(LF_DB_Close(dbh) != 0)
+        {
+            Talk("db close failed\n");
+        }
+    }
+}
+
+
+void test_INI()
+{
+    string ini[][];
+
+    INI_read(ini, "test.ini");
+    INI_write(ini, "test2.ini");
+}
+
+
+void test_CaptureWindow()
+{
+    int i;
+    int w;
+
+    Talk("\eCapture after 5 seconds ... \n");
+    Wait(5000);
+
+    w = CaptureAllWindow();
+    Talk("Captured " + itoa(w) + " windows.\n\n");
+
+    for(i = 0; i < w; i++)
+    {
+        if(CaptureWindowIsValid(i))
+        {
+            if(CaptureWindowIsActive(i))
+            {
+                int j;
+                int ret;
+                string result[][];
+                string title;
+
+                title = CaptureWindowGetTitle(i);
+                title = StrReplace(title, "\\", "\\\\");
+
+                Talk("title = " + title + "\n");
+                Talk("class = " + CaptureWindowGetClassName(i) + "\n");
+
+//                ret = NH_MA_parse(title, result);
+//                Talk("ret = " + itoa(ret) + "\n");
+//
+//                for(j = 0; j < lengthof result; j++)
+//                {
+//                    Talk("[" + result[j][0] + "] : " + result[j][1] + "\n");
+//                }
+
+                break;
+            }
+        }
+    }
+    Talk("\p");
+}
+
+
+/**
+ * method 0 normal graphics function
+ *        1 bitmap handle
+ *        2 bitmap handle with stretch
+ *        3 bitmap handle with smooth stretch
+ */
+int test_GraphicsPerformance(int method, int times)
+{
+    int bh;
+    int time;
+    int i;
+
+    if(method > 0)
+    {
+        if((bh = BitmapHandleCreate(1)) < 0)
+        {
+            return -1;
+        }
+    }
+
+    StartTimeCount();
+
+    for(i = 0; i < times; i++)
+    {
+        string imgfile = "img\\test"+itoa(i%3)+".hp3";
+
+        if(method == 0)
+        {
+            if(LoadBitmap(imgfile) == 0)
+            {
+                return -2;
+            }
+
+            DisplayImage(0);
+        }
+        else
+        {
+            if(LoadBitmapB(bh, imgfile) == 0)
+            {
+                return -2;
+            }
+
+            if(method  == 1)
+            {
+                DisplayImageWB("", bh, 0);
+            }
+            else if(method == 2 || method == 3)
+            {
+                int w = GetBitmapHandleWidth(bh);
+                int h = GetBitmapHandleHeight(bh);
+
+                int bh_s;
+
+                if((bh_s = BitmapHandleCreate(1)) < 0)
+                {
+                    return -3;
+                }
+
+                if(LoadBitmapB(bh_s, "img\\dummy.hp3") == 0)
+                {
+                    return -3;
+                }
+
+                if(method == 2)
+                {
+                    if(BitmapHandleStretchCopyRect(
+                        bh_s,
+                        0, 0, w/2, h/2,
+                        bh,
+                        0, 0, w, h) == 0)
+                    {
+                        return -4;
+                    }
+                }
+                else
+                {
+                    if(BitmapHandleSmoothStretchCopyRect(
+                        bh_s,
+                        0, 0, w/2, h/2,
+                        bh,
+                        0, 0, w, h) == 0)
+                    {
+                        return -4;
+                    }
+                }
+
+/*
+                SetTalkWaitMode(1);
+                Talk("bh="+itoa(bh)+", width="+itoa(GetBitmapHandleWidth(bh))+", height="+itoa(GetBitmapHandleHeight(bh))+"\n");
+                Talk("bh_s="+itoa(bh_s)+", width="+itoa(GetBitmapHandleWidth(bh_s))+", height="+itoa(GetBitmapHandleHeight(bh_s))+"\n");
+                SetTalkWaitMode(0);
+*/
+
+                DisplayImageWB("", bh_s, 0);
+
+                if(BitmapHandleDestroy(bh_s) == 0)
+                {
+                    return -5;
+                }
+            }
+        }
+    }
+
+    time = StopTimeCount();
+
+    if(method > 0)
+    {
+        if(BitmapHandleDestroy(bh) == 0)
+        {
+            return -20;
+        }
+    }
+
+    return time;
+}
+
+
+void test_ICComm()
+{
+    string id;
+    string psn;
+    string msg;
+
+    int waitmode = GetTalkWaitMode();
+    SetTalkWaitMode(PWS_TALK_NOWAIT);
+
+    AddItem("メッセージ送信")
+    {
+        Talk("\eID: ");
+        id = EditBox(0, 1024, "own");
+        Talk(id + "\n");
+
+        Talk("Character Code: ");
+        psn = EditBox(0, 1024, "NH-X-TEST01");
+        Talk(psn + "\n");
+
+        Talk("Message: ");
+        msg = EditBox(0, 1024, "test");
+        Talk(msg + "\n");
+
+        int r;
+
+        AddItem("Asynchronous")
+        {
+            r = ICComm_sendMessage(id, psn, msg, ICCOMM_SEND_ASYNC);
+        }
+        AddItem("Synchronous")
+        {
+            r = ICComm_sendMessage(id, psn, msg, ICCOMM_SEND_SYNC);
+        }
+        Choice;
+
+        Talk("result: " + itoa(r) + "\p");
+    }
+    AddItem("受信済みメッセージ列挙")
+    {
+        int i;
+        int time;
+        string items[];
+        string msgs[];
+        int n = 0;
+
+        for(i = 0; (time = ICComm_enumMessageReceivedTime(i)) != -1; i++)
+        {
+            string pid;
+            string persona;
+            string message;
+
+            if(ICComm_getMessage(time, pid, persona, message))
+            {
+                items[n] = itoa(time) + ": from " + persona + "@" + pid;
+                msgs[n] = message;
+                n++;
+            }
+        }
+
+        boolean loop = true;
+        while(loop)
+        {
+            int sel = UI_listBox(items, 0, -1, true);
+
+            if(sel < 0)
+            {
+                loop = false;
+            }
+            else
+            {
+                Talk(msgs[sel] + "\p");
+            }
+        }
+    }
+    Choice;
+
+    SetTalkWaitMode(waitmode);
+}
+
+
+void test_EmotIcon()
+{
+//    boolean loop = true;
+//
+//    while(loop)
+//    {
+//        AddItem("init")
+//        {
+//            EmotIcon_init();
+//        }
+//        AddItem("destroy")
+//        {
+//            EmotIcon_destroy();
+//        }
+//        AddItem("setPosition")
+//        {
+//            string pos = EditBox(0, 256, "0,0");
+//
+//            if(pos != "" && pos != NULL)
+//            {
+//                int x = atoi(StrToken(pos, ",", 0));
+//                int y = atoi(StrToken(pos, ",", 1));
+//
+//                EmotIcon_setPosition(x, y);
+//            }
+//        }
+//        AddItem("setIcon")
+//        {
+//            string name = EditBox(0, 256, "");
+//
+//            if(name != NULL)
+//            {
+//                if(name == "")
+//                {
+//                    name = NULL;
+//                }
+//
+//                EmotIcon_setIcon(name);
+//            }
+//        }
+//        AddItem("show")
+//        {
+//            EmotIcon_show();
+//        }
+//        AddItem("hide")
+//        {
+//            EmotIcon_hide();
+//        }
+//        AddCancelItem
+//        {
+//            loop = false;
+//        }
+//        Choice;
+//    }
+}
+
+
+void test_NH_MA()
+{
+//    boolean loop = true;
+//
+//    while(loop)
+//    {
+//        Talk("\e");
+//
+//        AddItem("test")
+//        {
+//            string input = EditBox(0, 1024, "");
+//            Talk("\e" + NH_MA_test(input) + "\p");
+//        }
+//        AddItem("useUserDictionary")
+//        {
+//            string input = EditBox(0, 1024, "");
+//            NH_MA_useUserDictionary(input);
+//        }
+//        AddItem("parse")
+//        {
+//            boolean ploop = true;
+//            int waitmode = GetTalkWaitMode();
+//
+//            SetTalkWaitMode(PWS_TALK_NOWAIT);
+//
+//            while(ploop)
+//            {
+//                int i;
+//                int ret;
+//                string result[][];
+//                string input = EditBox(0, 1024, "");
+//
+//                if(input != NULL)
+//                {
+//                    ret = NH_MA_parse(input, result);
+//                    Talk("\eret = " + itoa(ret) + "\n");
+//
+//                    for(i = 0; i < lengthof result; i++)
+//                    {
+//                        Talk("[" + result[i][0] + "] : " +
+//                             result[i][1] + "\n");
+//                    }
+//                }
+//                else
+//                {
+//                    ploop = false;
+//                }
+//            }
+//
+//            SetTalkWaitMode(waitmode);
+//        }
+//        AddItem("getLastError")
+//        {
+//            string error = NH_MA_getLastError();
+//            if(error == NULL)
+//            {
+//                Talk("NULL\p");
+//            }
+//            else
+//            {
+//                error = StrReplace(error, "\\", "\\\\");
+//                Talk(error + "\p");
+//            }
+//        }
+//        AddCancelItem
+//        {
+//            loop = false;
+//        }
+//        Choice;
+//    }
+}
+
+
+void test_MordsMorth()
+{
+//    boolean loop = true;
+//
+//    while(loop)
+//    {
+//        Talk("\e");
+//
+//        AddItem("queueSentence")
+//        {
+//            string sentence = EditBox(0, 1024, "");
+//            string flag = EditBox(0, 1024, "");
+//
+//            MordsMorth_queueSentence(sentence, flag);
+//        }
+//        AddItem("procSentences")
+//        {
+//            MordsMorth_procSentences();
+//        }
+//        AddItem("getWord")
+//        {
+//            int waitmode = GetTalkWaitMode();
+//            SetTalkWaitMode(PWS_TALK_NOWAIT);
+//            Talk(MordsMorth_getWord() + "\c");
+//            SetTalkWaitMode(waitmode);
+//        }
+//        AddCancelItem
+//        {
+//            loop = false;
+//        }
+//        Choice;
+//    }
+}
+
+
+
+void test_TTS()
+{
+//    boolean loop = true;
+//    int waitmode = GetTalkWaitMode();
+//
+//    SetTalkWaitMode(PWS_TALK_NOWAIT);
+//
+//    LoadPlugin("TTS");
+//
+//    while(loop)
+//    {
+//        Talk("\e");
+//
+//        AddItem("Select")
+//        {
+//            // 1 ～ LF_TTS_CountEngines()
+//            int count = LF_TTS_CountEngines();
+//            string engines[];
+//
+//            int i;
+//            for(i = 0; i < count; i++)
+//            {
+//                engines[i] = LF_TTS_ModeName(i + 1);
+//            }
+//
+//            int idx;
+//            idx = UI_listBox(engines, 0, -1, true);
+//
+//            if(idx >= 0)
+//            {
+//                idx++;
+//                Talk("ModeName: " + LF_TTS_ModeName(idx) + "\n");
+//                Talk("ModeID  : " + LF_TTS_ModeID(idx) + "\n");
+//                Talk("Speaker : " + LF_TTS_Speaker(idx) + "\n");
+//                Talk("Style   : " + LF_TTS_Style(idx) + "\n");
+//                Talk("Gender  : " + itoa(LF_TTS_Gender(idx)) + "\n");
+//                Talk("Age     : " + itoa(LF_TTS_Age(idx)) + "\p");
+//
+//                LF_TTS_Select(idx);
+//            }
+//        }
+//        AddItem("Speak")
+//        {
+//            string text;
+//
+//            text = EditBox(0, 1024, "");
+//
+//            if(text != NULL)
+//            {
+//                LF_TTS_Speak(text);
+//            }
+//        }
+//        AddCancelItem
+//        {
+//            loop = false;
+//        }
+//        Choice;
+//    }
+//
+//    SetTalkWaitMode(waitmode);
+}
+
+
+void test_Sprict()
+{
+    boolean loop = true;
+
+    int talkwait = GetTalkWaitMode();
+    SetTalkWaitMode(PWS_TALK_NORMAL);
+
+    while(loop)
+    {
+        AddItem("init")
+        {
+            SPR_init();
+            ICT_init();
+        }
+        AddItem("load")
+        {
+            AddItem("file")
+            {
+                SPR_load("file:etc\\main.spct");
+            }
+            AddItem("db")
+            {
+                //Sprict_load("db:etc\\script.db");
+                SPR_load("db:local\\tmp_sprict.db");
+            }
+            Choice;
+        }
+        AddItem("reload")
+        {
+            SPR_reload();
+        }
+        AddItem("run")
+        {
+            boolean l = true;
+
+            while(l)
+            {
+                string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+
+                if(src == NULL)
+                {
+                    l = false;
+                }
+                else
+                {
+                    string section = StrToken(src, ",", 0);
+                    string option = StrToken(src, ",", 1);
+
+                    if(option == NULL) { option = ""; }
+
+                    SPR_run(section, option);
+                    Talk("\p");
+                }
+            }
+        }
+        AddItem("runScript")
+        {
+            boolean l = true;
+
+            while(l)
+            {
+                string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+
+                if(src == NULL)
+                {
+                    l = false;
+                }
+                else
+                {
+                    ICT_runScript(src);
+                    Talk("\p");
+                }
+            }
+        }
+        AddItem("destroy")
+        {
+            SPR_destroy();
+        }
+        AddItem("---")
+        {
+        }
+        AddItem("getRandomItem")
+        {
+            boolean l = true;
+
+            while(l)
+            {
+                string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+
+                if(src == NULL)
+                {
+                    l = false;
+                }
+                else
+                {
+                    Talk(ict_getRandomItem(src) + "\n");
+                }
+            }
+        }
+        AddItem("searchPairParenthesis")
+        {
+            boolean l = true;
+
+            while(l)
+            {
+                string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+
+                if(src == NULL)
+                {
+                    l = false;
+                }
+                else
+                {
+                    int i;
+                    int r = ict_searchPairParenthesis(src, 0);
+
+                    Talk(src + "\n");
+                    for(i = 0; i < r; i++)
+                    {
+                        Talk(" ");
+                    }
+                    Talk("^ " + itoa(r) + "\n");
+                }
+            }
+        }
+        AddItem("getStatements")
+        {
+            boolean l = true;
+
+            while(l)
+            {
+                string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+
+                if(src == NULL)
+                {
+                    l = false;
+                }
+                else
+                {
+                    int i;
+                    string cmds[];
+                    ict_getStatements(src, cmds);
+
+                    for(i = 0; i < lengthof cmds; i++)
+                    {
+                        Talk(cmds[i] + "\n");
+                    }
+                    Talk("\p");
+                }
+            }
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
+    }
+
+    SetTalkWaitMode(talkwait);
+}
+
+
+
+void test_MI()
+{
+    boolean loop = true;
+
+    string questions[];
+
+    if(MI_getQuestions(questions) < 1)
+    {
+        return;
+    }
+
+    while(loop)
+    {
+        int sel;
+
+        Talk("\e");
+
+        sel = UI_listBox(questions, 0, -1, true);
+
+        if(sel < 0)
+        {
+            loop = false;
+        }
+        else
+        {
+            MI_answer(questions[sel]);
+            Talk("\p");
+        }
+    }
+}
+
+
+void test_UI()
+{
+    boolean loop = true;
+
+    while(loop)
+    {
+        AddItem("prefDialog")
+        {
+            string pref[][];
+            string result[];
+
+            UI_prefCreateItem(
+                pref, 0, "aaa",
+                UI_PREF_TYPE_SELECT, "タイムアウト",
+                "タイムアウトするまでの時間を指定します。",
+                "0=なし,5=5分,10=10分,20=20分,30=30分,45=45分,60=1時間", "");
+            UI_prefCreateItem(pref, 1, "",
+                              UI_PREF_TYPE_INPUT, "ユーザ呼称",
+                              "",
+                              "", "");
+            UI_prefCreateItem(pref, 2, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス1", "", "0,1", "0");
+            UI_prefCreateItem(pref, 3, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス2", "", "0,1", "0");
+            UI_prefCreateItem(pref, 4, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス3", "", "0,1", "0");
+            UI_prefCreateItem(pref, 5, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス4", "", "0,1", "0");
+            UI_prefCreateItem(pref, 6, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス5", "", "0,1", "0");
+            UI_prefCreateItem(pref, 7, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス6", "", "0,1", "0");
+            UI_prefCreateItem(pref, 8, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス7", "", "0,1", "0");
+            UI_prefCreateItem(pref, 9, "", UI_PREF_TYPE_CHECKBOX,
+                              "チェックボックス8", "", "0,1", "0");
+
+            MsgBox_setSize(20, 10);
+            if(UI_prefDialog("設定テスト", pref, result) == 1)
+            {
+                int i;
+
+                for(i = 0; i < lengthof result; i++)
+                {
+                    string id = UI_prefGetID(pref, i);
+
+                    Talk(id + "=" + result[i] + "\n");
+                }
+            }
+            Talk("\p");
+            MsgBox_setSize(20, 25);
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
+    }
+}
+
+
+
+void test_libMXCL()
+{
+    boolean loop = true;
+
+    while(loop)
+    {
+        AddItem("getOwnVendorAndType")
+        {
+            string vendor;
+            string type;
+            int result;
+
+            result = MXCL_getOwnVendorAndType(vendor, type);
+
+            Talk("\eresult:"+itoa(result)+"\n");
+            if(result == 1)
+            {
+                Talk(vendor+" - "+type+"\n");
+            }
+            Talk("\p");
+        }
+        AddItem("getInstalledCharacters")
+        {
+            string characters[];
+            int result;
+
+            result = MXCL_getInstalledCharacters(characters);
+
+            Talk("\eresult:"+itoa(result)+"\n");
+            if(result > 0)
+            {
+                int i;
+                for(i = 0; i < result; i++)
+                {
+                    Talk(characters[i]+"\n");
+                }
+            }
+            Talk("\p");
+        }
+        AddItem("strExcludeTags")
+        {
+            string str = EditBox(0, 1024, "");
+            Talk(MXCL_strExcludeTags(str)+"\n\p");
+        }
+        AddItem("updatePsnFile")
+        {
+            Talk("\e" + itoa(MXCL_updatePsnFile()) + "\n\p");
+        }
+        AddItem("checkUpdate")
+        {
+            Talk("\e" +
+                 itoa(MXCL_checkUpdate("http://update.mxpj.net/NH/MXPJ-01R/index.fet")) +
+                 "\n\p");
+        }
+        AddItem("parseFetFile")
+        {
+            string fet = MXCL_getFileContent("index.fet");
+
+            string hashes[];
+            string types[];
+            int sizes[];
+            string files[];
+            int n_files = mxcl_parseFetFile(fet, hashes, types, sizes, files);
+
+            int i;
+            for(i = 0; i < n_files; i++)
+            {
+                Talk(files[i] + "\n");
+            }
+            Talk("\p");
+        }
+        AddItem("getMoonAge")
+        {
+            Talk("\e" + ftoa(MXCL_getMoonAge(Time())) + "\p");
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
+    }
+}
+
+
+
+void test_RSS()
+{
+//    int count = LF_RP_GetRankingDataCount();
+//
+//    string titles[];
+//
+//    int i;
+//    for(i = 0; i < count; i++)
+//    {
+//        string data = LF_RP_GetRankingData(i);
+//        titles[i] = LF_RP_GetParameter(data, "title");
+//    }
+//
+//    while(true)
+//    {
+//        int sel = UI_listBox(titles, 0, -1, true);
+//
+//        if(sel >= 0)
+//        {
+//            string keywords[];
+//            int counts[];
+//
+//            if(LF_RP_GetRankingKeywords(keywords, counts, sel) == 0)
+//            {
+//                int i;
+//                for(i = 0; i < lengthof keywords; i++)
+//                {
+//                    Talk("> " + keywords[i] + " (" + itoa(counts[i]) + ")\n");
+//                }
+//                Talk("\p");
+//            }
+//        }
+//        else
+//        {
+//            break;
+//        }
+//    }
+}
+
+
+
+void test_WMPP()
+{
+//    boolean loop = true;
+//
+//    while(loop)
+//    {
+//        AddItem("LoadPlugin")
+//        {
+//            LoadPlugin("PwpWmpp");
+//        }
+//        AddItem("UnloadPlugin")
+//        {
+//            UnloadPlugin("PwpWmpp");
+//        }
+//        AddItem("SelectPlayer")
+//        {
+//            string player = "";
+//
+//            AddItem("WMP")
+//            {
+//                player = "WMP";
+//            }
+//            AddItem("iTunes")
+//            {
+//                player = "iTunes";
+//            }
+//            Choice;
+//
+//            Talk("\e" + itoa(LF_WMPP_SelectPlayer(player)) + "\p");
+//        }
+//        AddItem("OpenWmp")
+//        {
+//            Talk("\e" + itoa(LF_WMPP_OpenWmp()) + "\p");
+//        }
+//        AddItem("OpenItunes")
+//        {
+//            Talk("\e" + itoa(LF_WMPP_OpenItunes()) + "\p");
+//        }
+//        AddItem("GetPlayState [WMP]")
+//        {
+//            int state;
+//            if(LF_WMPP_GetPlayState(state) == 0)
+//            {
+//                string s;
+//
+//                switch(state)
+//                {
+//                case 0:
+//                    s = "未知の状態";
+//                    break;
+//                case 1:
+//                    s = "停止中";
+//                    break;
+//                case 2:
+//                    s = "一時停止中";
+//                    break;
+//                case 3:
+//                    s = "再生中";
+//                    break;
+//                case 4:
+//                    s = "早送り中";
+//                    break;
+//                case 5:
+//                    s = "巻き戻し中";
+//                    break;
+//                case 6:
+//                    s = "バッファリング中";
+//                    break;
+//                case 7:
+//                    s = "サーバの応答待ち中";
+//                    break;
+//                case 8:
+//                    s = "メディアの末尾に達した";
+//                    break;
+//                case 9:
+//                    s = "曲の切り替わり中";
+//                    break;
+//                case 10:
+//                    s = "再生可能状態";
+//                    break;
+//                case 11:
+//                    s = "再接続中";
+//                    break;
+//                default:
+//                    s = "不明";
+//                }
+//
+//                Talk("\e" + s + "\p");
+//            }
+//        }
+//        AddItem("GetItunesPlayState [iTunes]")
+//        {
+//            int state;
+//            if(LF_WMPP_GetItunesPlayState(state) == 0)
+//            {
+//                string s;
+//
+//                switch(state)
+//                {
+//                case 0:
+//                    s = "停止状態";
+//                    break;
+//                case 1:
+//                    s = "再生状態";
+//                    break;
+//                case 2:
+//                    s = "早送り";
+//                    break;
+//                case 3:
+//                    s = "巻き戻し";
+//                    break;
+//                default:
+//                    s = "不明";
+//                }
+//
+//                Talk("\e" + s + "\p");
+//            }
+//        }
+//        AddItem("GetCurrentMedia")
+//        {
+//            int r;
+//            string name;
+//
+//            r = LF_WMPP_GetCurrentMedia(name);
+//
+//            if(r == 0)
+//            {
+//                Talk(name + "\p");
+//            }
+//        }
+//        AddItem("GetCurrentMediaAttributes")
+//        {
+//            int r;
+//
+//            string attr_names[];
+//            string attr_values[];
+//
+//            // FIXME 初期化しないと前回の値を記憶している？
+//            int n = 0;
+//            attr_names[n] = "Title"; n++;
+//            attr_names[n] = "Name"; n++;
+//            attr_names[n] = "FileSize"; n++;
+//            attr_names[n] = "Size"; n++;
+//            attr_names[n] = "Duration"; n++;
+//            attr_names[n] = "SourceURL"; n++;
+//            attr_names[n] = "Artist"; n++;
+//            attr_names[n] = "Author"; n++;
+//            attr_names[n] = "Album"; n++;
+//            attr_names[n] = "WM/AlbumTitle"; n++;
+//            attr_names[n] = "Genre"; n++;
+//            attr_names[n] = "WM/Genre"; n++;
+//            attr_names[n] = "Composer"; n++;
+//            attr_names[n] = "WM/Composer"; n++;
+//            attr_names[n] = "FileType"; n++;      // for WMP
+//            attr_names[n] = "KindAsString"; n++;  // for iTunes
+//
+//            r = LF_WMPP_GetCurrentMediaAttributes(attr_names, attr_values);
+//
+//            if(r == 0)
+//            {
+//                Talk("\e");
+//
+//                int i;
+//                for(i = 0; i < lengthof attr_names; i++)
+//                {
+//                    Talk(attr_names[i] + " = " + attr_values[i] + "\n");
+//                }
+//                Talk("\p");
+//            }
+//        }
+//        AddItem("GetPosition")
+//        {
+//            double position;
+//
+//            if(LF_WMPP_GetPosition(position) == 0)
+//            {
+//                Talk("\e" + ftoa(position) + "\p");
+//            }
+//        }
+//        AddItem("GetPlaylistNames")
+//        {
+//            string playlist_names[];
+//
+//            if(LF_WMPP_GetPlaylistNames(playlist_names) == 0)
+//            {
+//                Talk("\e");
+//
+//                int i;
+//                for(i = 0; i < lengthof playlist_names; i++)
+//                {
+//                    Talk(itoa(i) + ": " + playlist_names[i] + "\n");
+//                }
+//
+//                Talk("\p");
+//            }
+//        }
+//        AddCancelItem
+//        {
+//            loop = false;
+//        }
+//        Choice;
+//    }
+}

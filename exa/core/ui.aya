@@ -1,0 +1,704 @@
+/**
+ * MX kernel 7
+ * ユーザインタフェース
+ *
+ * @author  n13i <n13i@m2hq.net>
+ * @version 0.1
+ * @date 2006/10/01
+ *
+ * @file
+ * @defgroup UI
+ * @ingroup UI
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "lib/mxcl/pwsconst.h"
+#import "icon.h"
+
+
+string UI_PREF_TYPE_CHECKBOX = "checkbox";
+string UI_PREF_TYPE_SELECT   = "select";
+string UI_PREF_TYPE_INPUT    = "input";
+string UI_PREF_TYPE_PASSWORD = "password";
+
+string UI_PREF_OPTION_DELIM = ",";
+string UI_PREF_COLOR_CHANGED = "ff0000";
+
+string UI_WHITESPACES = "                                                                                ";
+
+/**
+ * 設定メニューを表示し、結果を返す
+ *
+ * @param[in]  winname
+ * @param[in]  title
+ * @param[in]  pref[][] 設定項目
+ *                      pref[n][0] : 種類
+ *                      pref[n][1] : ID 名
+ *                      pref[n][2] : 項目名
+ *                      pref[n][3] : 選択肢
+ *                      pref[n][4] : 初期値
+ *                      pref[n][5] : ヘルプメッセージ
+ * @param[out] ret[]
+ *
+ * @retval 0  キャンセルされた
+ * @retval 1  OK が選択された
+ * @retval -2 winname が存在しない
+ *
+ * @fixme style == 1 な msgbox では sizew/sizeh が取得できない (2006/11/11)
+ *
+ * @date 2006/10/01
+ */
+int UI_prefDialogW(string winname, string title, string pref[][], string ret[])
+{
+    int i;
+
+    int sh;
+    int talkwait;
+
+    int width;
+    int itemsPerPage;
+    int page = 0;
+    int maxPages = 1;
+    boolean helpMode = false;
+
+    string prefOpts[][][];
+
+    int retval;
+
+    if(!IsPersonaWindowExists(winname))
+    {
+        return -2;
+    }
+
+    // 吹き出しの幅
+    width = atoi(GetProperty("VdConfig\\" + winname + "MsgBox\\SizeW")) * 2;
+
+    // 1 ページのアイテム数 (ヘッダ + HR + ヘルプ + OK + キャンセル = 6 行)
+    itemsPerPage = atoi(GetProperty("VdConfig\\" +
+                                    winname + "MsgBox\\SizeH")) - 6;
+
+    if(lengthof pref > itemsPerPage)
+    {
+        int n_prefs = lengthof pref;
+
+        maxPages = ((n_prefs - 1) / itemsPerPage) + 1;
+    }
+
+    for(i = 0; i < lengthof pref; i++)
+    {
+        int j;
+
+        // FIXME: 256 は適当: for(j = 0; ; j++) だと ayac がエラーを吐く
+        for(j = 0; j < 256; j++)
+        {
+            string option = StrToken(pref[i][3], UI_PREF_OPTION_DELIM, j);
+
+            if(option == NULL)
+            {
+                break;
+            }
+
+            prefOpts[i][0][j] = StrToken(option, "=", 0);
+            prefOpts[i][1][j] = StrToken(option, "=", 1);
+        }
+
+        // デフォルト値をセットしておく
+        ret[i] = pref[i][4];
+    }
+
+    talkwait = GetTalkWaitModeW(winname);
+    SetTalkWaitModeW(winname, PWS_TALK_NOWAIT);
+
+    sh = SelectCreate();
+
+    while(true)
+    {
+        int i;
+
+        // タイトル表示
+        if(!helpMode)
+        {
+            UI_showTitleW(winname, title);
+        }
+        else
+        {
+            UI_showTitleW(winname, ICON_HELP + " " + title);
+        }
+
+        // 選択肢作成
+        SelectClear(sh);
+        for(i = 0; i < itemsPerPage; i++)
+        {
+            int item = i + itemsPerPage * page;
+
+            if(item < lengthof pref)
+            {
+                ui_prefDialogMakeSelection(
+                    sh, pref[item], prefOpts[item], ret[item]);
+            }
+            else
+            {
+                SelectAdd(sh, "");
+            }
+        }
+        if(maxPages > 1)
+        {
+            string hl;
+            string page_indicator = "";
+
+            for(i = 0; i < maxPages; i++)
+            {
+                if(page == i)
+                {
+                    page_indicator += "■";
+                }
+                else
+                {
+                    page_indicator += "□";
+                }
+            }
+
+            hl = ui_getHorizontalLineWithLength(
+                width - StrLen(page_indicator) - 2);
+
+            SelectAdd(sh,
+                      hl + "\fc(339933)" +
+                      page_indicator + "\_fc" + ICON_NEXT);
+        }
+        else
+        {
+            SelectAdd(sh, UI_getHorizontalLineW(winname));
+        }
+        if(!helpMode)
+        {
+            SelectAdd(sh, ICON_HELP + " ヘルプ");
+        }
+        else
+        {
+            SelectAdd(sh, ICON_NG + " ヘルプモード終了");
+        }
+        SelectAdd(sh, ICON_OK + " OK");
+        SelectAdd(sh, ICON_RETURN + " キャンセル");
+        SelectW(winname, sh);
+
+        int index = SelectGetLastIndexW(winname);
+        int selected = index + itemsPerPage * page;
+
+        if(index < 0 || index == itemsPerPage + 3)
+        {
+            // キャンセル
+
+            if(index < 0 && helpMode)
+            {
+                // ヘルプモードのときはヘルプモードから抜ける
+                helpMode = false;
+            }
+            else
+            {
+                retval = 0;
+                break;
+            }
+        }
+        else if(index == itemsPerPage + 2)
+        {
+            // OK
+            retval = 1;
+            break;
+        }
+        else if(index == itemsPerPage + 1)
+        {
+            // ヘルプ
+            if(helpMode)
+            {
+                helpMode = false;
+            }
+            else
+            {
+                helpMode = true;
+            }
+        }
+        else if(maxPages > 1 && index == itemsPerPage)
+        {
+            // page
+            page = (page + 1) % maxPages;
+        }
+        else if(selected < lengthof pref)
+        {
+            if(!helpMode)
+            {
+                ret[selected] = ui_prefDialogChangeValue(
+                    winname, title,
+                    pref[selected], prefOpts[selected], ret[selected]);
+            }
+            else
+            {
+                ui_prefDialogShowHelp(winname, title, pref[selected]);
+
+                // 一回表示したらヘルプモード終了
+                //helpMode = false;
+            }
+        }
+    }
+    SelectDestroy(sh);
+    SetTalkWaitModeW(winname, talkwait);
+
+    return retval;
+}
+int UI_prefDialog(string title, string pref[][], string ret[])
+{
+    return UI_prefDialogW(PWS_WINNAME_MAIN, title, pref, ret);
+}
+
+/*
+ * @date 2006/10/01
+ */
+void ui_prefDialogMakeSelection(int sh, string pref[],
+                                string opts[][], string value)
+{
+    string prefType  = pref[0];
+    string prefDescr = pref[2];
+
+    if(value != pref[4])
+    {
+        // 初期値と異なる項目の色を変える
+        prefDescr = "\fc(" + UI_PREF_COLOR_CHANGED + ")" + prefDescr + "\_fc";
+    }
+
+    if(prefType == UI_PREF_TYPE_CHECKBOX)
+    {
+        if(value == opts[0][0])
+        {
+            SelectAdd(sh, ICON_CHECKOFF + " " + prefDescr);
+        }
+        else
+        {
+            SelectAdd(sh, ICON_CHECKON + " " + prefDescr);
+        }
+    }
+    else if(prefType == UI_PREF_TYPE_SELECT)
+    {
+        int i;
+        int selectedOpt = -1;
+
+        for(i = 0; i < lengthof opts[0]; i++)
+        {
+            if(value == opts[0][i])
+            {
+                selectedOpt = i;
+                break;
+            }
+        }
+
+        if(selectedOpt != -1)
+        {
+            SelectAdd(sh, prefDescr + " : \fu\fb" +
+                      opts[1][selectedOpt] + "\_fb\_fu");
+        }
+        else
+        {
+            SelectAdd(sh, prefDescr + " : \fu\fb" +
+                      value + "\_fb\_fu");
+        }
+    }
+    else if(prefType == UI_PREF_TYPE_INPUT)
+    {
+        SelectAdd(sh, prefDescr +
+                  " : \fu\fb" + value + "\_fb\_fu");
+    }
+}
+
+/**
+ * @date 2006/10/01
+ * @static
+ */
+string ui_prefDialogChangeValue(string winname, string title,
+                                string pref[], string opts[][], string value)
+{
+    string prefType  = pref[0];
+    string prefDescr = pref[2];
+
+    string ret = value;
+
+    if(prefType == UI_PREF_TYPE_CHECKBOX)
+    {
+        if(value == opts[0][0])
+        {
+            ret = opts[0][1];
+        }
+        else
+        {
+            ret = opts[0][0];
+        }
+    }
+    else if(prefType == UI_PREF_TYPE_SELECT)
+    {
+        int i;
+        int selectedOpt = 0;
+
+        int height = atoi(GetProperty("VdConfig\\" +
+                                      winname + "MsgBox\\SizeH")) - 2;
+
+        // 選択されているアイテムのインデックスを得る
+        for(i = 0; i < lengthof opts[0]; i++)
+        {
+            if(value == opts[0][i])
+            {
+                selectedOpt = i;
+                break;
+            }
+        }
+
+        UI_showTitleW(winname, prefDescr);
+        selectedOpt = UI_listBoxW(winname, opts[1], selectedOpt, height, true);
+
+        if(selectedOpt >= 0)
+        {
+            ret = opts[0][selectedOpt];
+        }
+    }
+    else if(prefType == UI_PREF_TYPE_INPUT)
+    {
+        string input;
+
+        UI_showTitleW(winname, prefDescr);
+        input = EditBoxW(winname, PWS_INPUT_TYPE_NORMAL, 1024, value);
+
+        if(input != NULL)
+        {
+            ret = input;
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * @date 2006/11/10
+ * @static
+ */
+void ui_prefDialogShowHelp(string winname, string title, string pref[])
+{
+    string prefDescr = pref[2];
+    string prefHelp  = pref[5];
+
+    UI_showTitleW(winname, ICON_HELP + " " + prefDescr);
+    TalkW(winname, prefHelp + "\p");
+}
+
+/**
+ * 設定項目を作成する
+ *
+ * @param[out] pref[][]
+ * @param[in]  index    -1 を指定した場合、pref の最後尾に追加される
+ * @param[in]  id
+ * @param[in]  type
+ * @param[in]  descr
+ * @param[in]  help
+ * @param[in]  options
+ * @param[in]  defvalue デフォルト値
+ *                      id が \ を含む場合プロパティキーとみなし
+ *                      その内容を defvalue とする
+ */
+void UI_prefCreateItem(string pref[][], int index, string id,
+                       string type, string descr, string help,
+                       string options, string defvalue)
+{
+    if(index == -1)
+    {
+        index = lengthof pref;
+    }
+
+    pref[index][0] = type;
+    pref[index][1] = id;
+    pref[index][2] = descr;
+    pref[index][3] = options;
+
+    if(StrSearch(id, "\\") == 1)
+    {
+        defvalue = GetProperty(id);
+    }
+
+    if(defvalue == NULL)
+    {
+        defvalue = "";
+    }
+
+    // defvalue が空ならオプションの先頭をデフォルト値にする
+    if(defvalue == "")
+    {
+        if(type == UI_PREF_TYPE_CHECKBOX)
+        {
+            defvalue = StrToken(options, ",", 0);
+        }
+        else if(type == UI_PREF_TYPE_SELECT)
+        {
+            // FIXME もうちょっとエラーチェックまともに
+            defvalue = StrToken(StrToken(options, ",", 0), "=", 0);
+        }
+    }
+
+    pref[index][4] = defvalue;
+    pref[index][5] = help;
+}
+
+string UI_prefGetID(string pref[][], int index)
+{
+    return pref[index][1];
+}
+
+
+
+/**
+ * 吹き出し内にリストボックスを表示する
+ *
+ * @param[in]  winname
+ * @param[in]  items
+ * @param[in]  selected
+ * @param[in]  height
+ * @param[in]  cancelable
+ *
+ * @retval 0以上 選択された項目の番号
+ * @retval -1    キャンセルされた
+ * @retval -2    ウィンドウが存在しない
+ *
+ * @date 2006/10/01
+ */
+int UI_listBoxW(string winname, string items[], int selected,
+                int height, boolean cancelable)
+{
+    int sh;
+    int sel_height;
+    int result = -255;
+    int n_items = lengthof items;  // 直接使おうとすると ayac が死ぬことがある
+    int width;
+
+    if(!IsPersonaWindowExists(winname))
+    {
+        return -2;
+    }
+
+    width = atoi(GetProperty("VdConfig\\" + winname + "MsgBox\\SizeW")) * 2;
+    if(height == -1)
+    {
+        height = atoi(GetProperty("VdConfig\\" + winname + "MsgBox\\SizeH")) - 2;
+    }
+
+    // 選択肢の行数
+    if(cancelable)
+    {
+        sel_height = height - 3;  // ▲▼ + キャンセルで 3 行
+    }
+    else
+    {
+        sel_height = height - 2;  // ▲▼ で 2 行
+    }
+
+
+    // Selection バッファを作成
+    sh = SelectCreate();
+
+    while(result == -255)
+    {
+        int i;
+        int sel;
+        string pos_str;
+        string listbar[];
+        boolean is_firstpage = false;
+        boolean is_lastpage = false;
+
+        // 配列の領域を越えないようにオフセットの調整
+        if(selected + sel_height >= n_items)
+        {
+            selected = n_items - sel_height;
+        }
+        if(selected < 0)
+        {
+            selected = 0;
+        }
+
+        if(selected == 0)
+        {
+            is_firstpage = true;
+        }
+        if(selected == n_items - sel_height || sel_height >= n_items)
+        {
+            is_lastpage = true;
+        }
+
+        // リストバーを作成
+        if(n_items <= sel_height)
+        {
+            for(i = 0; i < sel_height; i++)
+            {
+                listbar[i] = ICON_SCROLLBAR0;
+            }
+            pos_str = itoa(selected+1)+"～"+itoa(n_items)+"/"+itoa(n_items);
+        }
+        else
+        {
+            int lb_start = selected * sel_height / n_items;
+            int lb_height = sel_height * sel_height / n_items;
+
+            if(is_lastpage)
+            {
+                lb_height = sel_height - lb_start;
+            }
+
+            if(lb_height == 0)
+            {
+                lb_height = 1;
+            }
+
+            for(i = 0; i < sel_height; i++)
+            {
+                if(i >= lb_start && i < lb_start + lb_height)
+                {
+                    listbar[i] = ICON_SCROLLBAR1;
+                }
+                else
+                {
+                    listbar[i] = ICON_SCROLLBAR0;
+                }
+            }
+
+            pos_str = itoa(n_items) + "項目中 " +
+                      itoa(selected + 1) + "～" + itoa(selected + sel_height);
+        }
+        pos_str = " (" + pos_str + ")";
+        pos_str = StrSubstring(
+            UI_WHITESPACES, 0, width - StrLen(pos_str) - 4) + pos_str;
+        pos_str = "\fc(999999)" + pos_str + "\_fc";
+
+        // Selection バッファの内容をクリア
+        SelectClear(sh);
+
+        if(is_firstpage)
+        {
+            SelectAdd(sh, ICON_SCROLLUP_DISABLED + pos_str);
+        }
+        else
+        {
+            SelectAdd(sh, ICON_SCROLLUP_ENABLED + pos_str);
+        }
+        for(i = 0; i < sel_height; i++)
+        {
+            if(selected + i < n_items)
+            {
+                SelectAdd(sh, listbar[i]+" "+items[selected + i]);
+            }
+            else
+            {
+                // ダミーの選択肢
+                SelectAdd(sh, listbar[i]);
+            }
+        }
+        if(is_lastpage)
+        {
+            SelectAdd(sh, ICON_SCROLLDOWN_DISABLED);
+        }
+        else
+        {
+            SelectAdd(sh, ICON_SCROLLDOWN_ENABLED);
+        }
+        if(cancelable)
+        {
+            SelectAdd(sh, ICON_RETURN + " キャンセル");
+        }
+        SelectW(winname, sh);
+
+        // 選択された選択肢のインデックスを得る
+        sel = SelectGetLastIndexW(winname);
+        if(sel == 0)
+        {
+            // ↑
+            selected -= sel_height;
+        }
+        else if(sel == sel_height+1)
+        {
+            // ↓
+            selected += sel_height;
+        }
+        else if(sel == sel_height+2 || sel == -1)
+        {
+            // キャンセルされた
+            if(cancelable)
+            {
+                result = -1;
+            }
+        }
+        else if(sel == -2)
+        {
+            // ウィンドウが存在しない
+            result = -2;
+        }
+        else
+        {
+            if(selected + sel <= n_items)
+            {
+                result = selected + sel - 1;
+            }
+        }
+    }
+
+    // Selection バッファを破棄
+    SelectDestroy(sh);
+
+    return result;
+}
+int UI_listBox(string items[], int selected, int height, boolean cancelable)
+{
+    return UI_listBoxW(PWS_WINNAME_MAIN, items, selected, height, cancelable);
+}
+
+
+/**
+ * @date 2006/10/01
+ */
+void UI_showTitleW(string winname, string title)
+{
+    int talkwait = GetTalkWaitModeW(winname);
+
+    SetTalkWaitModeW(winname, PWS_TALK_NOWAIT);
+    TalkW(winname,
+          "\e\fb" + title + "\_fb\n" +
+          UI_getHorizontalLineW(winname) + "\n");
+    SetTalkWaitModeW(winname, talkwait);
+}
+void UI_showTitle(string title)
+{
+    UI_showTitleW(PWS_WINNAME_MAIN, title);
+}
+
+/**
+ * @date 2006/10/22
+ */
+string UI_getHorizontalLineW(string winname)
+{
+    int width = atoi(GetProperty("VdConfig\\" +
+                                 winname + "MsgBox\\SizeW"));
+
+    return ui_getHorizontalLineWithLength(width * 2);
+}
+string UI_getHorizontalLine()
+{
+    return UI_getHorizontalLineW(PWS_WINNAME_MAIN);
+}
+
+string ui_getHorizontalLineWithLength(int length)
+{
+    int i;
+    string line = "";
+
+    for(i = 0; i < length; i += 2)
+    {
+        line += "―";
+    }
+
+    if(length % 2 == 1)
+    {
+        line += " ";
+    }
+
+    return "\fc(aaaaaa)" + line + "\_fc";
+}

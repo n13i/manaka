@@ -1,0 +1,418 @@
+/**
+ * MX kernel 7
+ * キャラデリ関連
+ *
+ * @author  n13i <n13i@m2hq.net>
+ *
+ * @version 0.2.0
+ * @date    2006/07/25 作成
+ * @date    2006/11/12 kernel へ移動、汎用性を持たせてみる
+ *
+ * @file
+ * @ingroup CharaDeli
+ */
+
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "lib/mxcl/pwsconst.h"
+#import "message.h"
+#import "debug.h"
+
+
+int charadeli_status[];
+int CHARADELI_STATUS_UNUSED   = 0;
+int CHARADELI_STATUS_NOVISIT  = 1;
+int CHARADELI_STATUS_READY    = 2;
+int CHARADELI_STATUS_VISITING = 3;
+int CHARADELI_STATUS_RETURNED = 4;
+
+string charadeli_to[];
+string charadeli_dataName[];
+string charadeli_sendMessageHeader[];
+string charadeli_sendMessageBody[];
+string charadeli_replyMessageHeader[];
+string charadeli_replyMessageBody[];
+string charadeli_replyDate[];
+//string charadeli_messageBoundary[];
+
+
+/**
+ * @return セッション ID
+ *
+ * @date 2006/11/13
+ */
+int CharaDeli_newSession()
+{
+    int id_max = lengthof charadeli_status;
+    int i;
+
+    // 未使用の id を探す
+    for(i = 0; i < id_max; i++)
+    {
+        if(charadeli_status[i] == CHARADELI_STATUS_UNUSED)
+        {
+            return i;
+        }
+    }
+
+    // id_max == 0 もしくは未使用 id がない
+    charadeli_status[id_max] = CHARADELI_STATUS_NOVISIT;
+    return id_max;
+}
+
+/**
+ * セッションを破棄
+ *
+ * @date 2006/11/13
+ */
+void CharaDeli_destroySession(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return;
+    }
+
+    charadeli_status[sid] = CHARADELI_STATUS_UNUSED;
+}
+
+/**
+ * メッセージ作成ダイアログを開く
+ *
+ * @param[in] to      送信先 ID の初期値
+ * @param[in] message メッセージの初期値
+ *
+ * @retval 0 失敗
+ * @retval 1 成功
+ *
+ * @note コールバックが呼べない状態のときは [送信] ボタンを押せない？
+ */
+int CharaDeli_editMessage(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return 0;
+    }
+
+    IMShowMessageInputDialog(
+        charadeli_to[sid],
+        charadeli_sendMessageBody[sid],
+        itoa(sid));
+
+    return 1;
+}
+
+/**
+ * IMShowMessageEditDialog で開いたダイアログが閉じられた時に
+ * コールバックされる。
+ *
+ * @param[in] result  ダイアログの閉じられ方
+ * @param[in] to      送信先 Chararina ID
+ * @param[in] message メッセージ本文
+ * @param[in] param   汎用パラメータ
+ *
+ * @static
+ */
+void cIMMessageInputDialog(int result, string to, string message, string param)
+{
+    Debug(DEBUG_LV_TRACE, "CharaDeli",
+          "dialog closed: result=" + itoa(result) + ", " +
+          "to=" + to + ", " +
+          "message=" + message + ", " +
+          "param=" + param);
+
+    // 送信ボタンが押された
+    if(result == 1)
+    {
+        int sid = atoi(param);
+
+        CharaDeli_setSendTo(sid, to);
+        CharaDeli_setSendMessageBody(sid, message);
+
+        // Cancel() しないでフラグ立てるだけにしておいたほうが無難か
+        CharaDeli_ready(sid);
+    }
+}
+
+/**
+ * 訪問先を指定する
+ *
+ * @param[in] to 訪問先
+ */
+void CharaDeli_setSendTo(int sid, string to)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return;
+    }
+
+    charadeli_to[sid] = to;
+}
+
+/**
+ * 訪問時に用いるデータを指定する
+ *
+ * @param[in] dataname キャラデリデータ定義ファイル名 (.vst を除く)
+ */
+void CharaDeli_setSendDataName(int sid, string dataname)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return;
+    }
+
+    charadeli_dataName[sid] = dataname;
+}
+
+/**
+ * 送信するメッセージを指定する
+ *
+ * @param[in] message メッセージ
+ */
+void CharaDeli_setSendMessageBody(int sid, string message)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return;
+    }
+
+    charadeli_sendMessageBody[sid] = message;
+}
+
+/**
+ * 訪問準備完了を指示する
+ */
+int CharaDeli_ready(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return 0;
+    }
+
+    // STUB
+
+    // TODO 各パラメータのチェック
+
+    charadeli_status[sid] = CHARADELI_STATUS_READY;
+
+    return 1;
+}
+
+/**
+ * 訪問準備が完了しているかどうか
+ */
+boolean CharaDeli_isReady(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return false;
+    }
+
+    return (charadeli_status[sid] == CHARADELI_STATUS_READY);
+}
+
+
+/**
+ * 実際の訪問処理を行う
+ *
+ * @retval 1        成功
+ * @retval それ以外 失敗
+ */
+int CharaDeli_doVisit(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return 0;
+    }
+
+    int r;
+
+    // TODO message にヘッダ付加
+
+    SaveProperty();
+
+    // 自分のニックネームを得る
+    // FIXME visitor でやってもいいかもしれない
+    int handle;
+    string name = L11GetPID();
+    if(L11GetOnlineState(handle, L11GetPID()) == 1)
+    {
+        int resp;
+
+        // 結果が返ってくるまで待つ
+        while((resp = L11WaitResponse(handle, 50)) == -24)
+        {
+            Wait(0);
+        }
+
+        if(resp == 1)
+        {
+            int state_type;
+            string state_str;
+
+            L11GetResponseGetOnlineState(
+                handle, state_type, state_str, name);
+        }
+
+        L11CloseHandle(handle);
+    }
+
+    Message_new();
+    Message_setBody(charadeli_sendMessageBody[sid]);
+    Message_addHeader("Name", name);
+
+    r = VisitTo(
+        charadeli_to[sid],
+        charadeli_dataName[sid],
+        Message_getAll(),
+        PWS_CB_INTERRUPT,
+        charadeli_onReturnFromVisit,
+        itoa(sid));
+
+    if(r != 1)
+    {
+        // 失敗
+        Debug(DEBUG_LV_ERROR, "CharaDeli", "VisitTo failed, result = " + itoa(r));
+        Debug(DEBUG_LV_ERROR, "CharaDeli", charadeli_dataName[sid]);
+
+        charadeli_status[sid] = CHARADELI_STATUS_NOVISIT;
+        return r;
+    }
+
+    charadeli_status[sid] = CHARADELI_STATUS_VISITING;
+    return 1;
+}
+
+/**
+ * キャラデリから帰ってきた時にコールバックされる。
+ *
+ * @param[in] pid     訪問先の Chararina ID
+ * @param[in] message 訪問先で得たメッセージ
+ * @param[in] param   VisitTo に渡した param
+ *
+ * @static
+ */
+void charadeli_onReturnFromVisit(string pid, string message, string param)
+{
+    int sid = atoi(param);
+
+    charadeli_status[sid] = CHARADELI_STATUS_RETURNED;
+    charadeli_replyMessageBody[sid] = message;
+    charadeli_replyDate[sid] = Message_formatTime(Time());
+}
+
+/**
+ * 訪問状態を得る
+ */
+int CharaDeli_getStatus(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return -1;
+    }
+
+    return charadeli_status[sid];
+}
+
+/**
+ * @date 2006/11/13
+ */
+boolean CharaDeli_isReturned(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return false;
+    }
+
+    if(charadeli_status[sid] == CHARADELI_STATUS_RETURNED)
+    {
+        charadeli_status[sid] = CHARADELI_STATUS_NOVISIT;
+        return true;
+    }
+
+    return false;
+}
+
+
+/**
+ * 返信メッセージを表示する
+ *
+ * @param[in] sid セッション ID
+ *
+ * @retval 0 失敗
+ * @retval 1 成功
+ *
+ * @date 2006/11/13
+ */
+int CharaDeli_showReplyMessage(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return 0;
+    }
+
+    if(charadeli_replyMessageBody[sid] == NULL
+       || charadeli_replyMessageBody[sid] == "")
+    {
+        return 0;
+    }
+
+    Message_newFromString(charadeli_replyMessageBody[sid]);
+
+    int r = IMShowMessageBrowseDialog(
+        charadeli_to[sid],
+        Message_getBody(),
+        charadeli_replyDate[sid],
+        true,
+        PWS_CB_INTERRUPT,
+        charadeli_onCloseMessageBrowseDialog,
+        itoa(sid));
+
+    return r;
+}
+
+/**
+ * メッセージ表示ダイアログを閉じたときコールバックされる
+ *
+ * @param[in] result  ダイアログの閉じられ方
+ * @param[in] from    返信元 Chararina ID
+ * @param[in] message メッセージ本文
+ * @param[in] date    日付
+ * @param[in] quote   引用チェックボックスの状態
+ * @param[in] param   汎用パラメータ
+ *
+ * @date 2006/11/13
+ * @static
+ */
+void charadeli_onCloseMessageBrowseDialog(int result, string from,
+                                          string message, string date,
+                                          boolean quote, string param)
+{
+    int sid = atoi(param);
+
+    // 返信ボタンが押された
+    if(result == 1)
+    {
+        // FIXME quote
+        CharaDeli_setSendTo(sid, from);
+        CharaDeli_setSendMessageBody(sid, message);
+
+        CharaDeli_editMessage(sid);
+    }
+}
+
+
+/**
+ * @date 2006/11/13
+ * @static
+ */
+boolean charadeli_isValidSessionId(int sid)
+{
+    if(sid >= 0)
+    {
+        return true;
+    }
+
+    return false;
+}

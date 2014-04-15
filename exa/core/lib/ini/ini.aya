@@ -1,0 +1,380 @@
+/*-
+ * Copyright (C) 2006 mxproject
+ * All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+/**
+ * @file
+ * @brief    INI ファイルパーサ
+ *
+ * @author   n13i <n13i@m2hq.net>
+ * @version  0.1.0
+ *
+ * @date     2006/02/23 作成
+ *
+ * @ingroup  INI
+ */
+
+#import "Prototype150.aya"
+#import "Prototype200.aya"
+
+
+/*
+ * [section0]
+ * key0=value0
+ * key1=value1
+ * [section1]
+ * key2=value2;
+ *
+ *    ↓
+ *
+ * ini[0][0] = "section0";
+ * ini[0][1] = "key0=value0";
+ * ini[0][2] = "key1=value1";
+ * ini[1][0] = "section1";
+ * ini[1][1] = "key2=value2";
+ *    :
+ */
+
+int INI_new(string ini[][])
+{
+	emptyof ini;
+	return 1;
+}
+
+/**
+ * @note 同名のセクションが複数存在する場合、その内容は統合されます。
+ */
+int INI_read(string ini[][], string filename)
+{
+	int fh;
+	string line;
+	string current_section = "";
+	int pos;
+
+	if((fh = FileOpen(filename, "r")) < 0)
+	{
+		return 0;
+	}
+
+	emptyof ini;
+
+	while((line = FileGets(fh)) != NULL)
+	{
+		line = StrTrimRight(line);
+
+		if(line != "")
+		{
+			if(StrSubstring(line, 0, 0) == ";")
+			{
+				// ignore comment
+			}
+			else if(StrSubstring(line, 0, 0) == "[" &&
+					StrSubstring(line,
+								 StrLen(line) - 1,
+								 StrLen(line) - 1) == "]" &&
+					StrLen(line) > 2)
+			{
+				// セクション
+				current_section = StrSubstring(line, 1, StrLen(line) - 2);
+			}
+			else if((pos = StrIndexOf(line, "=", 1)) > 0)
+			{
+				// キー
+				string key = StrToken(line, "=", 0);
+				string value;
+
+				// ex) a= : StrLen(line) == 2, pos == 1
+				if(StrLen(line)-1 <= pos)
+				{
+					value = "";
+				}
+				else
+				{
+					value = StrSubstring(line, pos+1, StrLen(line) - 1);
+				}
+
+				INI_setValue(ini, current_section, key, value);
+			}
+		}
+
+		Wait(0);
+	}
+
+	FileClose(fh);
+
+	return 1;
+}
+
+/**
+ * @retval 1 成功
+ * @retval 0 ファイルのオープンに失敗
+ * @retval -1 ファイルへの書き込みに失敗
+ */
+int INI_write(string ini[][], string filename)
+{
+	int fh;
+
+	if((fh = FileOpen(filename, "w")) < 0)
+	{
+		return 0;
+	}
+
+	int i;
+	for(i = 0; i < lengthof ini; i++)
+	{
+		if(FilePuts("[" + ini[i][0] + "]\n", fh) != 1)
+		{
+			FileClose(fh);
+			return -1;
+		}
+
+		int j;
+		for(j = 1; j < lengthof ini[i]; j++)
+		{
+			if(FilePuts(ini[i][j] + "\n", fh) != 1)
+			{
+				FileClose(fh);
+				return -1;
+			}
+		}
+	}
+
+	FileClose(fh);
+
+	return 1;
+}
+
+int INI_setValue(string ini[][], string section, string key, string value)
+{
+	int sidx;
+	int kidx;
+
+	if((sidx = ini_searchSectionIndex(ini, section)) < 0)
+	{
+		// 新規セクション追加
+		sidx = lengthof ini;
+		ini[sidx][0] = section;
+	}
+
+	if((kidx = ini_searchKeyIndex(ini, sidx, key)) < 0)
+	{
+		// 新規キー追加
+		kidx = lengthof ini[sidx];
+	}
+
+	ini[sidx][kidx] = key + "=" + value;
+
+	return 1;
+}
+
+/**
+ * @brief
+ *
+ * @param[in] ini
+ * @param[in] key
+ *
+ * @retval 空文字列 キーが見つからない
+ */
+string INI_getValue(string ini[][], string section, string key)
+{
+	int sidx;
+	int kidx;
+	string k;
+	string value = "";
+
+	if((sidx = ini_searchSectionIndex(ini, section)) < 0)
+	{
+		// セクションが見つからない
+		return "";
+	}
+
+	if((kidx = ini_searchKeyIndex(ini, sidx, key)) < 0)
+	{
+		// キーが見つからない
+		return "";
+	}
+
+	if(ini_parseKeyAndValue(ini[sidx][kidx], k, value) != 1)
+	{
+		return "";
+	}
+
+	return value;
+}
+
+/**
+ * 指定したセクションのキーを得る
+ *
+ * @param[in]  ini
+ * @param[in]  section
+ * @param[out] keys
+ *
+ * @retval -1 失敗
+ * @retval それ以外 成功
+ *
+ * @date 2006/10/31
+ */
+int INI_getKeys(string ini[][], string section, string keys[])
+{
+	int i;
+	int n = 0;
+	int sidx;
+
+	emptyof keys;
+
+	if((sidx = ini_searchSectionIndex(ini, section)) < 0)
+	{
+		return -1;
+	}
+
+	for(i = 0; i < lengthof ini[sidx]; i++)
+	{
+		string k; string v;
+		if(ini_parseKeyAndValue(ini[sidx][i], k, v) == 1)
+		{
+			keys[n] = k;
+			n++;
+		}
+	}
+
+	return n;
+}
+
+/**
+ * 指定したセクションに存在するキーの数を得る
+ *
+ * @param[in]  ini
+ * @param[in]  section
+ *
+ * @retval -1 失敗
+ * @retval それ以外 キーの数
+ *
+ * @date 2006/11/27
+ */
+int INI_getKeyCount(string ini[][], string section)
+{
+	string dummy[];
+
+	return INI_getKeys(ini, section, dummy);
+}
+
+/**
+ * セクションのリストを得る
+ *
+ * @param[in]  ini
+ * @param[out] sections
+ *
+ * @retval -1 失敗
+ * @retval それ以外 成功
+ *
+ * @date 2006/11/06
+ */
+int INI_getSections(string ini[][], string sections[])
+{
+	int i;
+
+	emptyof sections;
+
+	for(i = 0; i < lengthof ini; i++)
+	{
+		sections[i] = ini[i][0];
+	}
+
+	return lengthof sections;
+}
+
+int INI_destroy(string ini[][])
+{
+	emptyof ini;
+	return 1;
+}
+
+
+/**
+ * @static
+ */
+int ini_searchSectionIndex(string ini[][], string section)
+{
+	int i;
+	int index = -1;
+
+	for(i = 0; i < lengthof ini; i++)
+	{
+		if(ini[i][0] == section)
+		{
+			index = i;
+			break;
+		}
+	}
+
+	return index;
+}
+
+/**
+ * @static
+ */
+int ini_searchKeyIndex(string ini[][], int section_index, string key)
+{
+	int i;
+	int index = -1;
+
+	// 0 はセクション名なので、1 から
+	for(i = 1; i < lengthof ini[section_index]; i++)
+	{
+		string k; string v;
+
+		if(ini_parseKeyAndValue(ini[section_index][i], k, v) == 1)
+		{
+			if(k == key)
+			{
+				index = i;
+				break;
+			}
+		}
+	}
+
+	return index;
+}
+
+/**
+ * @static
+ */
+int ini_parseKeyAndValue(string line, string &key, string &value)
+{
+	int p;
+
+	if((p = StrIndexOf(line, "=", 0)) < 1)
+	{
+		return 0;
+	}
+
+	key   = StrTrim(StrSubstring(line, 0, p - 1));
+	if(StrLen(line) > p + 1)
+	{
+		value = StrTrim(StrSubstring(line, p + 1, StrLen(line) - 1));
+	}
+	else
+	{
+		value = "";
+	}
+
+	return 1;
+}

@@ -1,0 +1,272 @@
+/**
+ * MX kernel 7
+ * キャラクタ間通信 (InterCharacter Communication)
+ *
+ * @author  n13i <n13i@m2hq.net>
+ * @version 0.01
+ *
+ * @date    2006/02/22 作成
+ *
+ * @ingroup ICComm
+ *
+ * @file
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "lib/mxcl/mxcl.h"
+#import "lib/mxcl/pwsconst.h"
+#import "debug.h"
+
+string ICCOMM_PROP_MESSAGES    = "MXkernel\\ICComm\\Messages";
+string ICCOMM_PROP_LATEST      = "MXkernel\\ICComm\\Latest";
+string ICCOMM_PROP_LASTCHECKED = "MXkernel\\ICComm\\LastChecked";
+
+int ICCOMM_SEND_ASYNC = 0;
+int ICCOMM_SEND_SYNC  = 1;
+
+
+/**
+ * キャラクタにメッセージを送信する
+ *
+ * @param[in] id      送信先の Chararina ID
+ * @param[in] persona 送信先のキャラクタの型番
+ * @param[in] message 送信するメッセージ
+ * @param[in] sync    非同期送信 or 同期送信
+ *
+ * @retval       1 送信先キャラクタ or サーバにメッセージが受理された
+ * @retval      -8 id で指定されたユーザーがいない
+ * @retval     -13 handle が不正
+ * @retval     -40 相手がオフラインだった
+ * @retval     -71 宛先キャラクタが起動していなかった
+ * @retval     -72 宛先キャラクタは割り込みを禁止していた
+ * @retval     -73 宛先キャラクタはコールバック関数を実装していなかった
+ * @retval    -255 メッセージ送信失敗
+ * @retval    -511 sync パラメータが不正
+ *
+ * @note      非同期でオフラインの場合サーバに蓄積されるので -40 は返らない？
+ */
+int ICComm_sendMessage(string id, string persona, string message, int sync)
+{
+    int handle;
+    int r;
+
+    if(sync == ICCOMM_SEND_ASYNC)
+    {
+        r = L11AsyncSendPersonaMessage(handle, id, persona, message);
+    }
+    else if(sync == ICCOMM_SEND_SYNC)
+    {
+        r = L11SendPersonaMessage(handle, id, persona, message);
+    }
+    else
+    {
+        return -511;
+    }
+
+    if(r != 1)
+        return -255;
+
+    int resp;
+
+    // 応答が返ってくるまで待つ
+    while((resp = L11WaitResponse(handle, 50)) == -24)
+    {
+        Wait(0);
+    }
+
+    L11CloseHandle(handle);
+
+    return resp;
+}
+
+/**
+ * 受信したメッセージを保存する
+ *
+ * キャラクタ間通信でメッセージを受信した時に割り込みでコールバックされる。
+ *
+ * @param[in] time    メッセージの送信時刻
+ * @param[in] pid     送信者の Chararina ID
+ * @param[in] message メッセージ本文
+ * @param[in] persona 送信元のキャラクタ型名
+ *
+ * @date      2006/09/23 StrEncodeURL してから保存するようにした
+ */
+void cL11ReceivePersonaMessage(int time, string pid,
+                               string message, string persona)
+{
+    if(message == NULL || message == "")
+    {
+        return;
+    }
+
+    Debug(DEBUG_LV_TRACE, "ICComm",
+          itoa(time) + ", from " + persona + "@" + pid + ", " + message);
+
+    MXCL_makePropertyTree(ICCOMM_PROP_MESSAGES);
+
+    // 受信したメッセージは ICComm\\Messages\\(メッセージ受信時間) に
+    // (送信元キャラリナ ID):(送信元キャラクタ型番):(メッセージ) 形式で
+    // 保存される
+    PutProperty(ICCOMM_PROP_MESSAGES + "\\" + itoa(time),
+                StrEncodeURL(pid) + ":" +
+                StrEncodeURL(persona) + ":" +
+                StrEncodeURL(message));
+
+    // 最後に受信したメッセージの受信時間を保存
+    if(time > atoi(GetProperty(ICCOMM_PROP_LATEST)))
+    {
+        PutProperty(ICCOMM_PROP_LATEST, itoa(time));
+    }
+}
+
+
+/**
+ * 最後にチェックしてから新しいメッセージを受信したかどうか調べる
+ *
+ * @retval true  新着メッセージが存在する
+ * @retval false 新着メッセージは存在しない
+ */
+boolean ICComm_isNewMessageArrived()
+{
+    int last_checked = atoi(GetProperty(ICCOMM_PROP_LASTCHECKED));
+    PutProperty(ICCOMM_PROP_LASTCHECKED, itoa(Time()));
+
+    if(atoi(GetProperty(ICCOMM_PROP_LATEST))
+       > atoi(GetProperty(ICCOMM_PROP_LASTCHECKED)))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * 受信したメッセージが存在するかどうか調べる
+ *
+ * @retval true  メッセージが存在する
+ * @retval false メッセージは存在しない
+ */
+boolean ICComm_messageExists()
+{
+    if(EnumChildProperty(ICCOMM_PROP_MESSAGES, 0) != NULL)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * 指定された受信時間のメッセージを得る
+ *
+ * @param[in]  time    受信時間
+ * @param[out] pid     送信元 Chararina ID
+ * @param[out] persona 送信元キャラクタ
+ * @param[out] message メッセージ本文
+ *
+ * @retval     true  メッセージの取得に成功した
+ * @retval     false メッセージの取得に失敗した
+ *
+ * @date       2006/09/23 cL11ReceivePersonaMessage の変更に伴う変更
+ */
+boolean ICComm_getMessage(int time, string &pid, string &persona, string &message)
+{
+    string msg;
+
+    if((msg = GetProperty(ICCOMM_PROP_MESSAGES + "\\" + itoa(time))) != NULL)
+    {
+        pid     = StrDecodeURL(StrToken(msg, ":", 0));
+        persona = StrDecodeURL(StrToken(msg, ":", 1));
+        message = StrDecodeURL(StrToken(msg, ":", 2));
+
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * 指定された受信時間のメッセージを削除する
+ *
+ * @param[in] time 受信時間
+ */
+void ICComm_deleteMessage(int time)
+{
+    DelProperty(ICCOMM_PROP_MESSAGES + "\\" + itoa(time));
+}
+
+/**
+ * 受信したメッセージの受信時間を列挙する。
+ */
+int ICComm_enumMessageReceivedTime(int count)
+{
+    string key;
+
+    if((key = EnumChildProperty(ICCOMM_PROP_MESSAGES, count)) == NULL)
+    {
+        return -1;
+    }
+
+    return atoi(key);
+}
+
+int ICComm_getMatchingMessages(string pid_pattern, string persona_pattern, string message_pattern, string messages[][])
+{
+    int time_key;
+    int count = 0;
+
+    emptyof messages;
+
+    while((time_key = ICComm_enumMessageReceivedTime(count)) >= 0)
+    {
+        string in_pid;
+        string in_persona;
+        string in_message;
+
+        if(ICComm_getMessage(time_key, in_pid, in_persona, in_message))
+        {
+            if(BREGMatch(pid_pattern, in_pid) > 0 &&
+               BREGMatch(persona_pattern, in_persona) > 0 &&
+               BREGMatch(message_pattern, in_message) > 0)
+            {
+                int idx = lengthof messages;
+                messages[idx][0] = itoa(time_key);
+                messages[idx][1] = in_pid;
+                messages[idx][2] = in_persona;
+                messages[idx][3] = in_message;
+            }
+        }
+
+        count++;
+    }
+
+    return lengthof messages;
+}
+
+/**
+ * 受信したメッセージをすべて削除する。
+ */
+void ICComm_cleanupMessages()
+{
+    int i;
+    string key;
+
+    // 処理中は割り込みさせない
+    Uninterrupted {
+        for(i = 0; (key = EnumChildProperty(ICCOMM_PROP_MESSAGES, i)) != NULL; i++)
+        {
+            DelProperty(ICCOMM_PROP_MESSAGES + "\\" + key);
+
+            /**
+             * [aaa], bbb, ccc, ddd
+             * bbb, [ccc], ddd
+             * bbb, ddd
+             *
+             * 次のループで i を 0 にしないと全てのメッセージがクリアされない
+             */
+            i = -1;
+        }
+    }
+}

@@ -1,0 +1,156 @@
+/*
+  プロパティ関連
+*/
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+
+string PROP_ROOT = "Private";
+
+void Prop_init()
+{
+    MakePropertyTree(PROP_ROOT);
+}
+
+void Prop_deletePrivateTree()
+{
+    DelPropertyTree(PROP_ROOT);
+}
+
+boolean Prop_migrateFromV2()
+{
+    boolean v2_migrated = false;
+
+    if(GetProperty(PROP_ROOT + "\\MigratedFrom") == NULL)
+    {
+        string firstboot = GetProperty("Firstboot");
+        if(firstboot != NULL)
+        {
+            MakePropertyTree(PROP_ROOT + "\\V2");
+
+            int i;
+            string name;
+            string properties[][];
+
+            for(i = 0; (name = EnumChildProperty("..\\Vendor", i)) != NULL; i++)
+            {
+                if(!PropertyTreeExists(name))
+                {
+                    int idx = lengthof properties;
+                    properties[idx][0] = name;
+                    properties[idx][1] = GetProperty(name);
+                }
+            }
+            for(i = 0; i < lengthof properties; i++)
+            {
+                PutProperty(PROP_ROOT + "\\V2\\" + properties[i][0],
+                        properties[i][1]);
+                DelProperty(properties[i][0]);
+            }
+
+            prop_copy("V2\\Koshou", "UserName");
+            prop_copy("V2\\Firstboot", "FirstBootTime");
+            prop_copy("V2\\BootTime", "LastBootTime");
+            prop_copy("V2\\ExitTime", "ShutdownTime");
+
+            PutProperty(PROP_ROOT + "\\MigratedFrom", firstboot);
+            v2_migrated = true;
+        }
+        else
+        {
+            PutProperty(PROP_ROOT + "\\MigratedFrom", "-1");
+        }
+    }
+
+    return v2_migrated;
+}
+
+void prop_copy(string from_key, string to_key)
+{
+    PutProperty(PROP_ROOT + "\\" + to_key, GetProperty(PROP_ROOT + "\\" + from_key));
+}
+
+string Prop_getPrivate(string key)
+{
+    return GetProperty(PROP_ROOT + "\\" + key);
+}
+
+void Prop_setPrivate(string key, string value)
+{
+    PutProperty(PROP_ROOT + "\\" + key, value);
+}
+
+string Prop_getUserName()
+{
+    string username = GetProperty(PROP_ROOT + "\\UserName");
+    if(username == NULL || username == "")
+    {
+        Prop_setUserName(GetProperty("\\User\\FirstName") + "さん");
+    }
+    return GetProperty(PROP_ROOT + "\\UserName");
+}
+
+void Prop_setUserName(string username)
+{
+    PutProperty(PROP_ROOT + "\\UserName", username);
+}
+
+string Prop_getUserNamePropertyKey()
+{
+    return PROP_ROOT + "\\UserName";
+}
+
+void Prop_setFirstBootTime(int time)
+{
+    if(time < 0)
+    {
+        time = Time();
+    }
+    PutProperty(PROP_ROOT + "\\FirstBootTime", itoa(time));
+}
+int Prop_getFirstBootTime()
+{
+    string time = GetProperty(PROP_ROOT + "\\FirstBootTime");
+    if(time == NULL || time == "")
+    {
+        time = "-1";
+    }
+    return atoi(time);
+}
+
+void Prop_setLastBootTime(int time)
+{
+    if(time < 0)
+    {
+        time = Time();
+    }
+    PutProperty(PROP_ROOT + "\\LastBootTime", itoa(time));
+}
+int Prop_getLastBootTime()
+{
+    string time = GetProperty(PROP_ROOT + "\\LastBootTime");
+    if(time == NULL || time == "")
+    {
+        time = "-1";
+    }
+    return atoi(time);
+}
+
+void Prop_setShutdownTime(int time)
+{
+    if(time < 0)
+    {
+        time = Time();
+    }
+    PutProperty(PROP_ROOT + "\\ShutdownTime", itoa(time));
+}
+int Prop_getShutdownTime()
+{
+    string time = GetProperty(PROP_ROOT + "\\ShutdownTime");
+    if(time == NULL || time == "")
+    {
+        time = "-1";
+    }
+    return atoi(time);
+}
+

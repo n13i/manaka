@@ -1,0 +1,374 @@
+/*
+  エントリポイントとなる標準アクションに対する処理
+*/
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/surface.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+#import "core/msgbox.h"
+#import "core/icon.h"
+#import "core/ui.h"
+#import "core/lib/mxcl/pwsconst.h"
+
+#import "visit.h"
+#import "mi.h"
+#import "properties.h"
+
+action MouseUpL@(false)
+{
+    string mi_question;
+    mi_question = MI_getOneQuestion();
+
+    MsgBox_setSize(16, 6);
+
+    Talk("\e");
+    SPR_run("Reaction", "called");
+    Talk("\n\n");
+
+    boolean loop = true;
+    int page = 0;
+    while(loop)
+    {
+        if(page == 0)
+        {
+            AddItem(SPR_getText("Menu", "question"))
+            {
+                page = 10;
+            }
+            AddItem(SPR_getText("Menu", "function"))
+            {
+                page = 20;
+            }
+            AddItem(SPR_getText("Menu", "config"))
+            {
+                loop = false;
+                Main_configMenu();
+            }
+            AddItem(mi_question)
+            {
+                loop = false;
+                MI_answer(mi_question);
+            }
+            AddCancelItem
+            {
+                loop = false;
+                Talk("\e");
+                HideMsgBox();
+            }
+        }
+        else if(page == 10)
+        {
+            AddItem(SPR_getText("Menu", "question_weather"))
+            {
+                SPR_run("Weather", "query");
+                loop = false;
+            }
+            AddItem(SPR_getText("Menu", "question_uptime"))
+            {
+                int now = Time();
+                int firstboot = Prop_getFirstBootTime();
+                int lastboot = Prop_getLastBootTime();
+                int osboot = GetTickCount() / 1000;
+                int totalexec = atoi(GetProperty("..\\System\\TotalExecuteTime"));
+                int execcount = atoi(GetProperty("..\\System\\ExecuteCount"));
+                ICT_runScript("\e{quick:" +
+                        "ここに来てから        " + itoa((now - firstboot) / 86400) + "日\n" +
+                        "今回呼ばれてから      " + itoa((now - lastboot) / 3600) + "時間\n" +
+                        "Windowsが起動してから " + itoa(osboot / 3600) + "時間\n" +
+                        "累計稼働時間          " + itoa(totalexec / 3600) + "時間\n" +
+                        "累計起動回数          " + itoa(execcount) + "回\n" +
+                        "}\wです。");
+
+                loop = false;
+            }
+            AddItem(SPR_getText("Menu", "question_history"))
+            {
+                loop = false;
+                UpdateHistory();
+            }
+            AddItem("")
+            {
+            }
+            AddCancelItem
+            {
+                page = 0;
+            }
+        }
+        else if(page == 20)
+        {
+            AddItem(SPR_getText("Menu", "function_charadeli"))
+            {
+                loop = false;
+                Visit_menu();
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddCancelItem
+            {
+                page = 0;
+            }
+        }
+        Choice;
+    }
+}
+
+void Main_configMenu()
+{
+    boolean loop = true;
+    int page = 0;
+
+    MsgBox_pushSize();
+    MsgBox_setSize(-1, 10);
+
+    while(loop)
+    {
+        if(page == 0)
+        {
+            UI_showTitle("設定");
+
+            AddItem(ICON_FOLDER + " " + Prop_getUserName() + "の呼びかた")
+            {
+                Main_pref_userName();
+            }
+            /*
+            AddItem(ICON_FOLDER + " ふるまい")
+            {
+                Main_preference();
+            }
+            */
+            AddItem(ICON_FOLDER + " 各機能の設定")
+            {
+                page = 1;
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem(UI_getHorizontalLine())
+            {
+            }
+            AddItem(ICON_OK + " これでOK")
+            {
+                loop = false;
+            }
+            AddCancelItem
+            {
+                loop = false;
+            }
+        }
+        else if(page == 1)
+        {
+            UI_showTitle("各機能の設定");
+
+            AddItem(ICON_FOLDER + " キャラデリの設定")
+            {
+                Visit_preference();
+            }
+/*
+            AddItem(ICON_FOLDER + " メールチェッカの設定")
+            {
+                MailCheck_preference();
+            }
+*/
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem("")
+            {
+            }
+            AddItem(UI_getHorizontalLine())
+            {
+            }
+            AddItem(ICON_RETURN + " もどる")
+            {
+                page = 0;
+            }
+            AddCancelItem
+            {
+                page = 0;
+            }
+        }
+        Choice;
+    }
+
+    MsgBox_popSize();
+    ICT_runScript("\eはい。\n");
+}
+
+void Main_preference()
+{
+    string pref[][];
+    string result[];
+
+    UI_prefCreateItem(pref, 0, "TimeSignal", UI_PREF_TYPE_CHECKBOX,
+                      "時報を言う",
+                      "",
+                      "0,1", "");
+    UI_prefCreateItem(pref, 1, "TimeTone", UI_PREF_TYPE_CHECKBOX,
+                      "稼働時間通知",
+                      "",
+                      "0,1", "");
+
+    MsgBox_pushSize();
+    MsgBox_setSize(-1, 12);
+    if(UI_prefDialog("ふるまい", pref, result) == 1)
+    {
+    }
+    MsgBox_popSize();
+}
+
+void Main_pref_userName()
+{
+    string candidates[];
+    candidates[0] = "(直接入力する)";
+
+    string firstname = GetProperty("\\User\\FirstName");
+    string lastname = GetProperty("\\User\\LastName");
+    string current_username = Prop_getUserName();
+    if(current_username == NULL || current_username == "")
+    {
+        current_username = firstname + "さん";
+    }
+    string changed_username = current_username;
+
+    int fh;
+    string tmp;
+    if((fh = FileOpen("etc\\namedb.lst", "r")) != -1)
+    {
+        while(true)
+        {
+            tmp = FileGets(fh);
+            if(tmp == NULL)
+            {
+                break;
+            }
+            else
+            {
+                if(tmp != "\n")
+                {
+                    tmp = StrToken(tmp, "\n", 0);
+
+                    if(StrSubstring(tmp, 0, 0) != ";")
+                    {
+                        tmp = StrReplace(tmp, "%fname%", firstname);
+                        tmp = StrReplace(tmp, "%lname%", lastname);
+
+                        int count = lengthof candidates;
+                        candidates[count] = tmp;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        // ファイルの読み込みに失敗
+        int count = lengthof candidates;
+        candidates[count] = current_username;
+    }
+
+    MsgBox_pushSize();
+    MsgBox_setSize(24, 12);
+    SPR_run("Preference", "UserName_Select");
+    int sel = UI_listBox(candidates, 0, -1, true);
+    MsgBox_popSize();
+    if(sel == 0)
+    {
+        // 呼称を直接入力
+        string cname = EditBox(PWS_INPUT_TYPE_NORMAL, 128, current_username);
+
+        if(cname != NULL && cname != "")
+        {
+            changed_username = cname;
+        }
+    }
+    else if(sel != -1)
+    {
+        changed_username = candidates[sel];
+    }
+
+    if(changed_username != current_username)
+    {
+        Prop_setUserName(changed_username);
+        SPR_run("Preference", "UserName_Changed");
+    }
+    else
+    {
+        SPR_run("Preference", "UserName_Unchanged");
+    }
+}
+
+action ShutDown@(false)
+{
+    Prop_setShutdownTime(-1);
+    SPR_run("OnShutdown", "");
+}
+
+void UpdateHistory()
+{
+    string update_ids[];
+    string updates[][];
+
+    SPR_getOptions("UpdateDetail", update_ids);
+    int num_ids = lengthof update_ids;
+
+    int i;
+    for(i = 0; i < num_ids; i++)
+    {
+        // 新しい項目が先頭にくるように
+        string opt = update_ids[num_ids - i - 1];
+        string tmp = SPR_getText("UpdateDetail", opt);
+        updates[0][i] = opt;
+        updates[1][i] = StrSubstring(tmp, 2, 11) + " - Update " + opt;
+    }
+
+    MsgBox_pushSize();
+    MsgBox_setSize(24, 12);
+    boolean loop = true;
+    int sel = 0;
+    while(loop)
+    {
+        Talk("\e");
+        UI_showTitle("更新履歴");
+        sel = UI_listBox(updates[1], sel, -1, true);
+        if(sel == -1)
+        {
+            loop = false;
+        }
+        else
+        {
+            SPR_run("UpdateDetail", updates[0][sel]);
+            Talk("\p");
+        }
+    }
+    MsgBox_popSize();
+    Talk("\e");
+    HideMsgBox();
+ }
+

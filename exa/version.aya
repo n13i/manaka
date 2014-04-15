@@ -1,0 +1,26 @@
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/sprict_spr.h"
+
+string VERSION_COUNT = "3";
+string VERSION_NUMBER = "5.00";
+string VERSION_DATE = "2014/04/11";
+
+void Version_setProfile()
+{
+	string profile = SPR_getText("CharacterProfile", "");
+
+    string CRLF = StrDecodeURL("%0D%0A");
+
+    PutProperty("VdConfig\\Name", "ˆ¤‰À");
+    PutProperty("VdConfig\\NameR", "‚Ü‚È‚©");
+    PutProperty("VdConfig\\Version",
+            VERSION_NUMBER + " Update " +
+            VERSION_COUNT + " (" + VERSION_DATE + ")");
+    PutProperty("VdConfig\\Profile",
+            StrReplace(profile, "\\n", CRLF) + CRLF +
+            "Version " + VERSION_NUMBER + " Update " +
+            VERSION_COUNT + " (" + VERSION_DATE + ")" + CRLF +
+            "Powered by MX kernel 7");
+}
+

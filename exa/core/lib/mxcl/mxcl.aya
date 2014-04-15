@@ -1,0 +1,700 @@
+/*-
+ * Copyright (C) 2006 mxproject
+ * All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+/**
+ * mxproject's common/character library
+ * 汎用ユーティリティ関数群
+ *
+ * @author   n13i <n13i@m2hq.net>
+ * @version  0.1.2
+ *
+ * @date 2006/02/21 作成 (GetOwnVendorAndType)
+ * @date 2006/02/22 mxcl へ改称・prefix MXCL_ を付加
+ *                  関数追加 (MXCL_GetInstalledCharacters)
+ * @date 2006/03/05 関数追加 (MXCL_makePropertyTree)
+ *                  関数名変更: MXCL_getInstalledCharacters
+ *                              MXCL_getOwnVendorAndType
+ * @date 2006/03/13 関数追加: MXCL_arrayGetSortedIndexInt
+ *                            MXCL_strRepeat
+ * @date 2006/07/13 関数追加: MXCL_strExcludeTags
+ * @date 2006/07/25 関数追加: MXCL_updatePsnFile
+ * @date 2006/11/25 関数追加: MXCL_getFileContent
+ *                            MXCL_checkUpdate
+ * @date 2006/12/10 関数追加: MXCL_getMoonAge
+ *
+ * @note     可変長配列及びリファレンスを利用する関数があるため、PWS1.x 向けの
+ *           PDK ではコンパイルできません。
+ *
+ * @ingroup  libmxcl
+ * @file
+ */
+
+#import "Prototype150.aya"
+#import "Prototype200.aya"
+#import "pwsconst.h"
+
+/**
+ * @brief      キャラクタ自身のベンダーコードと型番を得る。
+ *
+ * @param[out] vendor ベンダーコード
+ * @param[out] type   型番
+ *
+ * @retval     0 失敗
+ * @retval     1 成功
+ *
+ * @date       2006/02/21 作成
+ * @date       2006/03/05 関数名変更
+ */
+int MXCL_getOwnVendorAndType(string& vendor, string& type)
+{
+    string marker_key;
+    string marker_value;
+
+    int i;
+    string propname;
+
+    // マーカーの設置
+    marker_key = "___MXCL_getOwnVendorAndType___";
+    marker_value = "___"+CryptStr(itoa(Time())+itoa(Random(100000)))+"___";
+    PutProperty(marker_key, marker_value);
+
+    vendor = "";
+    type = "";
+
+    // 型番のサーチ
+    for(i = 0; (propname = EnumChildProperty("..\\..", i)) != NULL; i++)
+    {
+        if(GetProperty("..\\..\\"+propname+
+                       "\\Vendor\\"+marker_key) == marker_value)
+        {
+            type = propname;
+            break;
+        }
+    }
+    if(type == "")
+        return 0;
+
+    // ベンダーコードのサーチ
+    for(i = 0; (propname = EnumChildProperty("..\\..\\..", i)) != NULL; i++)
+    {
+        if(GetProperty("..\\..\\..\\"+propname+"\\"+type+
+                       "\\Vendor\\"+marker_key) == marker_value)
+        {
+            vendor = propname;
+            break;
+        }
+    }
+    if(vendor == "")
+        return 0;
+
+    // マーカーの撤去
+    DelProperty(marker_key);
+
+    return 1;
+}
+
+/**
+ * @brief      インストールされているキャラクタの型番を得る
+ *
+ * @param[out] characters キャラクタの型番を格納する配列
+ *
+ * @retval     -1    失敗
+ * @retval     0以上 インストールされているキャラクタの数
+ *
+ * @date       2006/02/22 作成
+ * @date       2006/03/05 関数名変更
+ */
+int MXCL_getInstalledCharacters(string characters[])
+{
+    int eh1;
+    string path = "..\\..\\..\\";
+
+    int n_chars = 0;
+    emptyof characters;
+
+    // インストールディレクトリ内の検索
+    if((eh1 = EnumFileStart(path+"*")) < 0)
+    {
+        return -1;
+    }
+
+    string vendor;
+    while((vendor = EnumFile(eh1)) != NULL)
+    {
+        if(vendor != "." && vendor != "..")
+        {
+            // ベンダーディレクトリ内の検索
+            int eh2;
+            if((eh2 = EnumFileStart(path+vendor+"\\*")) >= 0)
+            {
+                string type;
+                while((type = EnumFile(eh2)) != NULL)
+                {
+                    if(type != "." && type != ".." &&
+                       FolderExists(path+vendor+"\\"+type))
+                    {
+                        // キャラクタディレクトリ内の検索
+                        int eh3;
+                        if((eh3 = EnumFileStart(path+vendor+"\\"+type+"\\"+
+                            vendor+"-"+type+".psn")) >= 0)
+                        {
+                            string psn;
+
+                            // 複数同名の psn ファイルが
+                            // あることはないと思うが一応
+                            while((psn = EnumFile(eh3)) != NULL)
+                            {
+                                // 末尾の .psn を取って格納
+                                characters[n_chars] =
+                                    StrSubstring(psn, 0, StrLen(psn)-5);
+                                n_chars++;
+                            }
+
+                            EnumFileClose(eh3);
+                        }
+                    }
+                }
+
+                EnumFileClose(eh2);
+            }
+        }
+    }
+
+    EnumFileClose(eh1);
+
+    return n_chars;
+}
+
+/**
+ * @brief     プロパティツリーを作成する
+ *
+ * 必要ならば、中間のツリーも作成する。
+ * ex) Foo が存在しない状態で Foo\Bar の作成が可能。
+ *
+ * @param[in] tree ツリー名
+ *
+ * @retval     1     成功
+ * @retval     1以外 失敗
+ *
+ * @date       2006/03/05 作成
+ */
+int MXCL_makePropertyTree(string tree)
+{
+    if(StrSearch(tree, "\\") == 0)
+    {
+        if(!PropertyTreeExists(tree))
+        {
+            if(MakePropertyTree(tree) != 1)
+            {
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        string current_tree = "";
+        string node;
+        int i;
+
+        if(StrSubstring(tree, 0, 0) == "\\")
+        {
+            current_tree = "\\";
+        }
+
+        for(i = 0; (node = StrToken(tree, "\\", i)) != NULL; i++)
+        {
+            if(!PropertyTreeExists(current_tree+node))
+            {
+                if(MakePropertyTree(current_tree+node) != 1)
+                {
+                    return 0;
+                }
+            }
+
+            current_tree += node+"\\";
+        }
+    }
+
+    return 1;
+}
+
+
+/**
+ * @brief      int 型の配列の値を昇順にソートした時の添字の配列を得る
+ *
+ * @param[in]  target 配列
+ * @param[out] index  添字の配列
+ *
+ * @date       2006/03/13 作成
+ */
+void MXCL_arrayGetSortedIndexInt(int target[], int index[])
+{
+    int i;
+    int len = lengthof target;
+
+    emptyof index;
+    for(i = 0; i < len; i++)
+    {
+        index[i] = i;
+    }
+
+    mxcl_getSortedIndexInt(target, 0, len-1, index);
+}
+
+/**
+ * @private
+ */
+void mxcl_getSortedIndexInt(int target[], int from, int to, int index[])
+{
+    // ソート対象の値が全て等しいならそのまま抜ける
+    int value = target[index[from]];
+    int i;
+    for(i = from+1; i <= to; i++)
+    {
+        if(target[index[i]] != value)
+        {
+            break;
+        }
+    }
+    if(i == to+1)
+    {
+        return;
+    }
+
+/*
+    Talk("target:\n");
+    for(i = from; i <= to; i++)
+    {
+        Talk(itoa(target[index[i]])+" ");
+    }
+    Talk("\n");
+*/
+
+    // 軸要素を決定する
+    int pivot = target[index[from]];
+
+    int left = from;
+    int right = to;
+    while(true)
+    {
+        // 軸要素より大きいデータを探す
+        while(left <= to && target[index[left]] < pivot) { left++; }
+
+        // 軸要素未満のデータを探す
+        // target >= pivot だと pivot が最小値のとき止まらない
+        while(right >= from && target[index[right]] > pivot) { right--; }
+
+        // 探すポイントが交差したら抜ける
+        if(left >= right) { break; }
+
+        // 交換
+//        Talk("swap "+itoa(left)+", "+itoa(right)+"\n");
+
+        int tmp = index[left];
+        index[left] = index[right];
+        index[right] = tmp;
+
+/*
+        for(i = from; i <= to; i++)
+        {
+            Talk(itoa(target[index[i]])+" ");
+        }
+        Talk("\n");
+*/
+
+        left++;
+        right--;
+    }
+
+    // 分割し、それぞれ 2 つ以上のデータがあるならソート
+    if(from < left-1)
+    {
+        mxcl_getSortedIndexInt(target, from, left-1, index);
+    }
+    if(right+1 < to)
+    {
+        mxcl_getSortedIndexInt(target, right+1, to, index);
+    }
+}
+
+/**
+ * @brief      str を times 回繰り返した文字列を返す
+ *
+ * @param[in]  str   文字列
+ * @param[in]  times 繰り返しの回数
+ *
+ * @return     文字列
+ *
+ * @date       2006/03/13 作成
+ */
+string MXCL_strRepeat(string str, int times)
+{
+    int i;
+    string ret = "";
+
+    for(i = 0; i < times; i++)
+    {
+        ret += str;
+    }
+
+    return ret;
+}
+
+/**
+ * @brief      str から < > で囲まれた部分を取り除いた文字列を返す
+ *
+ * @param[in]  str   文字列
+ *
+ * @return     文字列
+ *
+ * @date       2006/07/13 作成
+ *
+ * @todo untested
+ */
+string MXCL_strExcludeTags(string str)
+{
+    int lparen;
+    int rparen = -1;
+    string ret = "";
+
+    while((lparen = StrIndexOf(str, "<", rparen+1)) != -1)
+    {
+        if(lparen > rparen+1)
+        {
+            ret += StrSubstring(str, rparen+1, lparen-1);
+        }
+
+        if((rparen = StrIndexOf(str, ">", lparen+1)) == -1)
+        {
+            break;
+        }
+    }
+
+    if(rparen != -1 && rparen != StrLen(str)-1)
+    {
+        ret += StrSubstring(str, rparen+1, StrLen(str)-1);
+    }
+
+    return ret;
+}
+
+
+/**
+ * 文字列がマルチバイト文字を含むかを調べる
+ *
+ * @param[in] str 文字列
+ * @return true/false
+ * @date 2006/07/19 作成
+ */
+boolean MXCL_strHasMultiByteChar(string str)
+{
+    return (StrLen(str) != StrLenmb(str));
+}
+
+
+/**
+ * .psn ファイルを更新する。
+ *
+ * @retval 2 更新に成功
+ * @retval 1 更新されていなかった
+ * @retval 0以下 失敗
+ *
+ * @note プロパティ MXCL_updatePsnFile を使用します。
+ * @date 2006/07/25 作成
+ *
+ * @todo 実際の更新処理が未実装
+ */
+int MXCL_updatePsnFile()
+{
+    string vendor;
+    string type;
+
+    if(MXCL_getOwnVendorAndType(vendor, type) == 0)
+    {
+        return -2;
+    }
+
+    string psnFileName = vendor + "-" + type + ".psn";
+    string psnUpdateProperty = "MXCL_updatePsnFile";
+
+    // index.fet から .psn ファイルを探す
+    boolean isFound = false;
+    string id;
+    string path;
+
+    string fet = MXCL_getFileContent("index.fet");
+    if(fet == NULL)
+    {
+        // fail
+        return -1;
+    }
+
+    string hashes[];
+    string types[];
+    int sizes[];
+    string files[];
+    int n_files = mxcl_parseFetFile(fet, hashes, types, sizes, files);
+
+    int i;
+    for(i = 0; i < n_files; i++)
+    {
+        if(StrSearch(StrLower(files[i]), StrLower(psnFileName)) == 1)
+        {
+            id = hashes[i];
+            path = files[i];
+            isFound = true;
+            break;
+        }
+    }
+
+    if(isFound)
+    {
+        // プロパティと保存し、一致しなければ更新
+        if(GetProperty(psnUpdateProperty) != id)
+        {
+            // 更新処理
+            if(FileCopy(path, "..\\" + psnFileName) != 1)
+            {
+                return -8;
+            }
+
+            // 現在の値を保存
+            PutProperty(psnUpdateProperty, id);
+
+            return 2;
+        }
+        else
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+/**
+ * 更新データの有無をチェックする
+ *
+ * @retval  0 更新なし
+ * @retval -1 ローカル index.fet のオープンに失敗
+ * @retval -2 リモート index.fet の取得に失敗
+ * @retval それ以外 更新あり (更新ファイルサイズ)
+ *
+ * @todo 比較部分が未完成
+ *
+ * @date 2006/11/25
+ */
+int MXCL_checkUpdate(string feturl)
+{
+    string local_fet;
+    int    local_files;
+    string l_hash[];
+    string l_type[];
+    int    l_size[];
+    string l_file[];
+
+    string remote_fet;
+    int    remote_files;
+    string r_hash[];
+    string r_type[];
+    int    r_size[];
+    string r_file[];
+
+    local_fet = MXCL_getFileContent("index.fet");
+    if(local_fet == NULL)
+    {
+        // fail
+        return -1;
+    }
+
+    feturl += "/index.fet";
+    remote_fet = GetHTTP(feturl, "", PWS_NETWORK_METHOD_GET, 30000);
+    if(GetProperty("..\\System\\HttpResult") != "0")
+    {
+        return -2;
+    }
+
+    local_files = mxcl_parseFetFile(local_fet, l_hash, l_type, l_size, l_file);
+    remote_files = mxcl_parseFetFile(remote_fet, r_hash, r_type, r_size, r_file);
+
+    //Talk("local: " + itoa(local_files) + ", remote: " + itoa(remote_files));
+
+    // todo
+
+    return 0;
+}
+
+
+/**
+ * @date 2006/11/25
+ */
+string MXCL_getFileContent(string filename)
+{
+    int fh;
+
+    if((fh = FileOpen(filename, "r")) < 0)
+    {
+        return NULL;
+    }
+
+    string line;
+    string content = "";
+
+    while((line = FileGets(fh)) != NULL)
+    {
+        content += line;
+    }
+
+    FileClose(fh);
+
+    return content;
+}
+
+/**
+ * キャラクタ更新定義ファイルの解析
+ *
+ * @date 2006/11/25
+ * @static
+ *
+ * @note 空フォルダは無視される
+ */
+int mxcl_parseFetFile(string fet, string hashes[], string types[],
+                      int sizes[], string files[])
+{
+    int n_files = 0;
+
+    boolean isMD5Format = false;
+    int i;
+    string line;
+    string dir[];
+
+    for(i = 0; (line = StrToken(fet, "\n", i)) != NULL; i++)
+    {
+        // #FieldInfo md5 32 attr 1 bsize 10
+        // #FieldInfo date 12 attr 1 size 5
+
+        if(line == "#FieldInfo md5 32 attr 1 bsize 10")
+        {
+            isMD5Format = true;
+        }
+        else if(StrSubstring(line, 0, 0) != "#")
+        {
+            string hash;
+            string size;
+            string type;
+            string file;
+            int lv;
+            string name;
+
+            // 各行を分解
+            if(isMD5Format)
+            {
+                hash = StrSubstring(line, 0, 31);
+                type = StrSubstring(line, 32, 32);
+                size = StrSubstring(line, 33, 42);
+                file = StrSubstring(line, 43, StrLen(line) - 1);
+            }
+            else
+            {
+                hash = StrSubstring(line, 0, 11);
+                type = StrSubstring(line, 12, 12);
+                size = StrSubstring(line, 13, 17);
+                file = StrSubstring(line, 18, StrLen(line) - 1);
+            }
+
+            // | の数 (ディレクトリの深さ) を調べる
+            if(StrIndexOf(file, "+", 0) < 1)
+            {
+                lv = 0;
+                name = StrSubstring(file, 1, StrLen(file) - 1);
+            }
+            else
+            {
+                lv = StrLen(StrToken(file, "+", 0));
+                name = StrSubstring(file, lv + 1, StrLen(file) - 1);
+            }
+
+            if(!isMD5Format)
+            {
+                sizes[n_files] *= 1024;
+            }
+
+            if(type == "d")
+            {
+                // ディレクトリ名を覚えておく
+                dir[lv] = name;
+            }
+            else if(type == "f")
+            {
+                int j;
+
+                string path = "";
+                for(j = 0; j < lv; j++)
+                {
+                    path += dir[j] + "\\";
+                }
+                path += name;
+
+                hashes[n_files] = hash;
+                types[n_files] = type;
+                sizes[n_files] = atoi(size);
+                files[n_files] = path;
+
+                n_files++;
+            }
+        }
+    }
+
+    return n_files;
+}
+
+/**
+ * 月齢を得る
+ *
+ * @param[in] time 1970/01/01 00:00:00 からの経過秒数
+ *
+ * @return 月齢
+ *
+ * @date 2006/12/10
+ */
+double MXCL_getMoonAge(int time)
+{
+    // http://news.local-group.jp/moonage/moonage.js.txt
+    // http://www-06.ibm.com/jp/developerworks/kaburobo/kr-algo3.shtml
+
+    // ユリウス通日を求める
+    double j = time / 86400.0 + 2440587.5;
+
+    // 直前の新月日の計算
+    double k = Floor((j - 2451550.09765) / 29.530589);
+    double t = k / 1236.85;
+    double nm;
+
+    nm = (2451550.09765
+          + 29.530589 * k
+          + 0.0001337 * t * t
+          - 0.40720 * Sin((201.5643 + 385.8169 * k) * 0.017453292519943)
+          + 0.17241 * Sin((2.5534 + 29.1054 * k) * 0.017453292519943));
+
+    return (j - nm);
+}

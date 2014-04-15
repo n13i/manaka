@@ -1,0 +1,1073 @@
+/**
+ * MX kernel 7
+ * Interpreter-like Command Translator
+ *
+ * @author  n13i <n13i@m2hq.net>
+ *
+ * @version 0.1.0
+ * @date    2006/10/02 作成
+ * @date    2007/07/26 分割開始
+ *
+ * @file
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "lib/mxcl/pwsconst.h"
+#import "surface.h"
+#import "msgbox.h"
+#import "debug.h"
+
+string  ICT_LOGDOMAIN = "ICT/Sprict";
+
+string  ict_talk_window = "";          ///< @private
+int     ict_procscript_level = -1;     ///< @private
+
+// スクリプト変数
+string  ict_variable_keys[];           ///< @private
+string  ict_variable_values[];         ///< @private
+int     ict_variable_status[];         ///< @private
+int     ict_variable_count = 0;        ///< @private
+int     ICT_VARIABLE_UNUSED = 0;       ///< @private
+int     ICT_VARIABLE_USED   = 1;       ///< @private
+string  ICT_VARIABLE_INTERNAL = "in";  ///< @private
+string  ICT_VARIABLE_EXTERNAL = "ex";  ///< @private
+
+boolean ict_talkanim_enable = false;   ///< @private
+string  ict_username_propkey = "";     ///< @private
+
+// 拡張用 (外部モジュールで定義)
+boolean ICTExtension_execCommand(string cmd, string cmd_arg,
+                                 boolean ignore_output, string &output);
+boolean ict_use_extension = false;
+
+// 一部SPR側に依存するコマンド用
+extern string SPR_PROP_SEQENTRY;
+extern string spr_current_section_id;
+string spr_runSection(string section, string option_expr, boolean ignore_output);
+
+void ICT_init()
+{
+    // スクリプト変数初期化
+    emptyof ict_variable_keys;
+    emptyof ict_variable_values;
+    emptyof ict_variable_status;
+    ict_variable_count = 0;
+}
+
+/**
+ * @date 2006/10/23
+ */
+int ICT_runScript(string script)
+{
+    ict_enableTalkAnimation();
+    ict_procScript(script, false);
+    ict_disableTalkAnimation();
+
+    return 1;
+}
+
+/**
+ * 与えられたスクリプトを実行
+ *
+ * @date 2006/10/08
+ */
+string ict_procScript(string script, boolean ignore_output)
+{
+    int i;
+    string statements[];
+    string result = "";
+
+    if(StrSearch(script, "{") == 0)
+    {
+        if(!ignore_output)
+        {
+            ict_talkAnimated(ict_talk_window, script);
+        }
+        return script;
+    }
+
+    ict_procscript_level++;
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "procScript[" + itoa(ict_procscript_level) +
+          "]: script = " + script);
+
+    ict_getStatements(script, statements);
+    for(i = 0; i < lengthof statements; i++)
+    {
+        string r = ict_procStatement(statements[i], ignore_output);
+        if(StrSearch(r, "{") == 1)
+        {
+            // 処理結果が {} で囲まれた文を含む場合
+            r = ict_procScript(r, ignore_output);
+        }
+        else
+        {
+            if(!ignore_output)
+            {
+                // FIXME コマンド毎にアニメーションがオンオフされるのは
+                // あまりよろしくない
+                ict_talkAnimated(ict_talk_window, r);
+            }
+        }
+
+        result += r;
+    }
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "procScript[" + itoa(ict_procscript_level) +
+          "]: result = " + result);
+
+    ict_procscript_level--;
+    return result;
+}
+
+/**
+ * スクリプトを文単位に分割
+ *
+ * 例えば
+ *   ほげほげ{cmd:aaa}もげもげ{cmd2:{cmd3}}ふがふが
+ * は、以下のように分割される。
+ *   ほげほげ
+ *   {cmd:aaa}
+ *   もげもげ
+ *   {cmd2:{cmd3}}
+ *   ふがふが
+ *
+ * cmd2 の中身はここでは展開されないことに注意。
+ *
+ * @date 2006/10/08
+ * @private
+ */
+int ict_getStatements(string str, string statements[])
+{
+    int lparen;
+    int rparen = -1;
+    int pos = 0;
+
+    int n_statements = 0;
+
+
+    emptyof statements;
+
+    while((lparen = StrIndexOf(str, "{", rparen + 1)) != -1)
+    {
+        int l;
+        int r;
+
+        // } と { の間の部分
+        if(rparen + 1 != lparen)
+        {
+            statements[n_statements] = StrSubstring(str, rparen + 1, lparen - 1);
+            n_statements++;
+        }
+
+        // { に対応する } の位置を得る
+        rparen = ict_searchPairParenthesis(str, lparen);
+        if(rparen == -1)
+        {
+            Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+                  "getStatements: can't find matching '}' in " + str);
+            return -1;
+        }
+
+        // { と } の間の部分
+        if(lparen + 1 != rparen)
+        {
+            statements[n_statements] = StrSubstring(str, lparen, rparen);
+            n_statements++;
+        }
+    }
+
+    // 最後の } 以降の部分
+    if(rparen + 1 != StrLen(str))
+    {
+        statements[n_statements] = StrSubstring(str, rparen + 1, StrLen(str) - 1);
+        n_statements++;
+    }
+
+    return n_statements;
+}
+
+/**
+ * 文の処理
+ *
+ * @param[in] ignore_output 出力が必要なコマンドを無視する
+ *
+ * @date 2006/10/08
+ * @private
+ */
+string ict_procStatement(string statement, boolean ignore_output)
+{
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "procStatement: statement = " + statement);
+
+    if(StrSubstring(statement, 0, 0) != "{")
+    {
+        // コマンド文でなければそのまま返す
+        return statement;
+    }
+
+    string out = "";
+
+    // {} の内側を取り出す
+    string cmd_line = StrSubstring(statement, 1, StrLen(statement) - 2);
+
+    string cmd_first = StrSubstring(cmd_line, 0, 0);
+    string cmd       = StrToken(cmd_line, ":", 0);
+    string cmd_arg   = StrSubstring(cmd_line,
+                                    StrLen(cmd) + 1, StrLen(cmd_line) - 1);
+
+    /**
+     * {if:expr=expr;then:aaa;else:bbb}
+     * < = > !
+     * 2014/04/10
+     */
+    if(cmd == "if")
+    {
+        string expr = StrToken(cmd_arg, ";", 0);
+        string tc = StrSubstring(cmd_arg, StrLen(expr) + 1, StrLen(cmd_arg) - 1);
+        string comp_type = NULL;
+        string expr2_eq = StrToken(expr, "=", 1);
+        string expr2_lt = StrToken(expr, "<", 1);
+        string expr2_gt = StrToken(expr, ">", 1);
+        string expr2_nt = StrToken(expr, "!", 1);
+        if(expr2_eq != NULL) { comp_type = "="; }
+        if(expr2_lt != NULL) { comp_type = "<"; }
+        if(expr2_gt != NULL) { comp_type = ">"; }
+        if(expr2_nt != NULL) { comp_type = "!"; }
+
+        boolean comp_result = false;
+
+        if(comp_type != NULL)
+        {
+            string expr1 = StrToken(expr, comp_type, 0);
+            string expr2 = StrToken(expr, comp_type, 1);
+
+            // expr1, expr2は先にignore_output=trueで評価しておく
+            expr1 = ict_procScript(expr1, true);
+            expr2 = ict_procScript(expr2, true);
+
+            if(BREGMatch("/^\\d+$/", expr1) > 0 &&
+                    BREGMatch("/^\\d+$/", expr2) > 0)
+            {
+                // 整数の比較
+                comp_result =
+                    (comp_type == "=" && atoi(expr1) == atoi(expr2)) ||
+                    (comp_type == "<" && atoi(expr1) < atoi(expr2)) ||
+                    (comp_type == ">" && atoi(expr1) > atoi(expr2)) ||
+                    (comp_type == "!" && atoi(expr1) != atoi(expr2));
+            }
+            else
+            {
+                // 文字列の比較
+                int c = StrComp(expr1, expr2);
+                comp_result =
+                    (comp_type == "=" && c == 0) ||
+                    (comp_type == "<" && c < 0) ||
+                    (comp_type == ">" && c > 0) ||
+                    (comp_type == "!" && c != 0);
+            }
+        }
+
+        string tags[];
+        string contents[];
+        int n = ict_strSplitTagsAndContents(tc, tags, contents);
+
+        int i;
+        for(i = 0; i < n; i++)
+        {
+            if((tags[i] == "then" && comp_result == true) ||
+                    (tags[i] == "else" && comp_result == false))
+            {
+                out = contents[i];
+                break;
+            }
+        }
+    }
+    /**
+     * {choice:item1:do1;item2:do2;@cancel:do3;@timeout(5):do4}
+     * 2007/03/13
+     */
+    else if(cmd == "choice" && !ignore_output)
+    {
+        string tags[];
+        string contents[];
+
+        int n = ict_strSplitTagsAndContents(cmd_arg, tags, contents);
+
+        if(n > 0)
+        {
+            // ChoiceTimeout の値を退避
+            string choiceTimeout = GetProperty("VdConfig\\MsgBox\\ChoiceTimeLimit");
+
+            ict_suspendTalkAnimation();
+
+            string do_cancel = "";
+            string do_timeout = "";
+
+            int sh = SelectCreate();
+
+            int i;
+            for(i = 0; i < n; i++)
+            {
+                if(tags[i] == "@cancel")
+                {
+                    do_cancel = contents[i];
+                }
+                else if(StrSubstring(tags[i], 0, 8) == "@timeout(")
+                {
+                    int timeout = atoi(StrSubstring(tags[i], 9, StrLen(tags[i]) - 1));
+                    PutProperty("VdConfig\\MsgBox\\ChoiceTimeLimit",
+                                itoa(timeout * 1000));
+
+                    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+                          "procStatement: timeout " + itoa(timeout) +"sec");
+
+                    do_timeout = contents[i];
+                }
+                else
+                {
+                    SelectAdd(sh, tags[i]);
+                }
+            }
+
+            while(true)
+            {
+                SelectW(ict_talk_window, sh);
+                int sel = SelectGetLastIndexW(ict_talk_window);
+
+                if(sel == -2)
+                {
+                    // unexpected
+                }
+                else if(sel == -1)
+                {
+                    if(GetProperty("..\\System\\CancelStatus") == "0")
+                    {
+                        // cancel
+                        // @cancel タグがない場合はキャンセルさせない
+                        if(do_cancel != "")
+                        {
+                            out = do_cancel;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // timeout
+                        out = do_timeout;
+                        break;
+                    }
+                }
+                else
+                {
+                    out = contents[sel];
+                    break;
+                }
+            }
+
+            SelectDestroy(sh);
+            ict_resumeTalkAnimation();
+
+            // ChoiceTimeout の値を復帰
+            PutProperty("VdConfig\\MsgBox\\ChoiceTimeLimit", choiceTimeout);
+
+        }
+    }
+    /**
+     * get Random Token
+     * {(aaa|bbb|ccc|ddd)}
+     */
+    else if(StrSubstring(cmd_line, 0, 0) == "(" &&
+            StrSubstring(cmd_line,
+                         StrLen(cmd_line) - 1,
+                         StrLen(cmd_line) - 1) == ")")
+    {
+        string arg = StrSubstring(cmd_line, 1, StrLen(cmd_line) - 2);
+
+        out = ict_getRandomItem(arg);
+    }
+    else if(cmd == "quick" && !ignore_output)
+    {
+        if(!ignore_output)
+        {
+            int talkwait = GetTalkWaitModeW(ict_talk_window);
+
+            ict_suspendTalkAnimation();
+            SetTalkWaitModeW(ict_talk_window, PWS_TALK_NOWAIT);
+            ict_procScript(cmd_arg, false);
+            SetTalkWaitModeW(ict_talk_window, talkwait);
+            ict_resumeTalkAnimation();
+        }
+        else
+        {
+            ict_procScript(cmd_arg, true);
+        }
+    }
+    /**
+     * 変数
+     *
+     * {%name} ... 外部変数
+     *             スクリプトからは読み込みのみ
+     *             綾織からは書き込みのみ
+     * {$name} ... 内部変数
+     *             スクリプトからは読み書き可能
+     *             綾織からは読み込みのみ
+     */
+    else if(cmd_first == "%" || cmd_first == "$")
+    {
+        if(StrLen(cmd_line) < 2)
+        {
+            // error
+        }
+        else
+        {
+            if(cmd_first == "%")
+            {
+                // 参照
+                out = ict_getExternalVariable(
+                    StrSubstring(cmd_line, 1, StrLen(cmd_line) - 1));
+            }
+            else if(cmd_first == "$")
+            {
+                int eq = StrIndexOf(cmd_line, "=", 2);
+
+                if(eq == -1)
+                {
+                    // 参照
+                    out = ICT_getInternalVariable(
+                        StrSubstring(cmd_line, 1, StrLen(cmd_line) - 1));
+                }
+                else
+                {
+                    // 代入
+                    string key = StrSubstring(cmd_line, 1, eq - 1);
+                    string value = "";
+
+                    if(eq != StrLen(cmd_line) - 1)
+                    {
+                        value = StrSubstring(cmd_line,
+                                             eq + 1, StrLen(cmd_line) - 1);
+                        value = ict_procScript(value, true);
+                    }
+
+                    ict_setInternalVariable(key, value);
+                }
+            }
+        }
+    }
+    else
+    {
+        // ↑のは引数にコマンドが含まれていようがそのまま出力
+
+        out = ict_execCommand(StrLower(cmd), cmd_arg, ignore_output);
+    }
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN, "procStatement: out = " + out);
+
+    return out;
+}
+
+/**
+ * コマンドを実行
+ *
+ * @param[in] cmd
+ * @param[in] cmd_arg
+ * @param[in] ignore_output
+ *
+ * @return 処理結果
+ *
+ * @date 2006/12/10
+ * @private
+ */
+string ict_execCommand(string cmd, string cmd_arg, boolean ignore_output)
+{
+    string out = "";
+    string ext_out = "";
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "execCommand: cmd = " + cmd + ", cmd_arg = " + cmd_arg);
+
+    if(cmd_arg != NULL)
+    {
+        // 引数にコマンドが含まれる場合、そちらを先に処理
+        if(StrSearch(cmd_arg, "{") == 1)
+        {
+            // 引数に出力を伴うコマンドがあった場合は無視
+            Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+                  "execCommand: evaluating cmd_arg ...");
+
+            cmd_arg = ict_procScript(cmd_arg, true);
+
+            Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+                  "execCommand: evaluated cmd_arg = " + cmd_arg);
+        }
+    }
+
+    if(ict_use_extension)
+    {
+        if(ICTExtension_execCommand(cmd, cmd_arg,
+                                       ignore_output, ext_out) == true)
+        {
+            return ext_out;
+        }
+    }
+
+    // 実行
+    if(cmd == "name")
+    {
+        string username = GetProperty(ict_username_propkey);
+        if(username == NULL || username == "")
+        {
+            out = "ユーザーさん";
+        }
+        else
+        {
+            out = username;
+        }
+    }
+    /**
+     * change surface
+     * {img:name}
+     */
+    else if(cmd == "img" && !ignore_output)
+    {
+        Surface_showImageSet(cmd_arg);
+        Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+        Surface_playAnimation(SURFACE_ANIMATION_TALK);
+    }
+    else if(cmd == "ico")
+    {
+        out = "\i(img\\icons\\" + cmd_arg + ".hp3, 1)";
+    }
+    /**
+     * set next sequence
+     * {seqnext:(n)}
+     * require SPR
+     */
+    else if(cmd == "seqnext")
+    {
+        PutProperty(SPR_PROP_SEQENTRY + "\\" +
+                    spr_current_section_id, cmd_arg);
+    }
+    /**
+     * {call:section}
+     * {call:section,option_expr}
+     * require SPR
+     */
+    else if(cmd == "call")
+    {
+        string argv[];
+        int argc;
+
+        argc = BREGSplit("/,/", cmd_arg, argv);
+        if(argc > 0)
+        {
+            if(argc == 1)
+            {
+                argv[1] = "";
+            }
+
+            // Talk 出力アリの場合、out へ代入すると
+            // call 先で得られた文字列を二度話してしまう
+            string o = spr_runSection(argv[0], argv[1], ignore_output);
+            if(ignore_output)
+            {
+                out = o;
+            }
+        }
+    }
+    /**
+     * switch window
+     * {sw:(winname)}
+     */
+    else if(cmd == "sw" && !ignore_output)
+    {
+        if(cmd_arg == NULL)
+        cmd_arg = PWS_WINNAME_MAIN;
+
+        ict_switchWindow(cmd_arg);
+    }
+    /**
+     * change msgbox style
+     * {msgbox:(style)}
+     */
+    else if(cmd == "msgbox" && !ignore_output)
+    {
+        MsgBox_setStyleW(ict_talk_window, cmd_arg);
+    }
+    /**
+     * wait
+     * {wait:(ms)}
+     */
+    else if(cmd == "wait" && !ignore_output)
+    {
+        Wait(atoi(cmd_arg));
+    }
+    else
+    {
+        Debug(DEBUG_LV_ERROR, ICT_LOGDOMAIN,
+              "procStatement: unknown command " + cmd);
+    }
+
+    return out;
+}
+
+// FIXME
+/*
+int ICT_putRegister(int regid, string value)
+{
+    return ict_setVariable(itoa(regid), value);
+}
+*/
+
+/**
+ * @date 2006/12/25
+ */
+int ICT_setExternalVariable(string key, string value)
+{
+    return ict_setVariable(ICT_VARIABLE_EXTERNAL + ":" + key, value);
+}
+
+/**
+ * @date 2006/12/25
+ * @private
+ */
+string ict_getExternalVariable(string key)
+{
+    return ict_getVariable(ICT_VARIABLE_EXTERNAL + ":" + key);
+}
+
+/**
+ * @date 2006/12/25
+ * @private
+ */
+int ict_setInternalVariable(string key, string value)
+{
+    return ict_setVariable(ICT_VARIABLE_INTERNAL + ":" + key, value);
+}
+
+/**
+ * @date 2006/12/25
+ */
+string ICT_getInternalVariable(string key)
+{
+    return ict_getVariable(ICT_VARIABLE_INTERNAL + ":" + key);
+}
+
+
+/**
+ * @retval 0 失敗
+ * @retval 1 成功
+ *
+ * @date 2006/12/25
+ */
+int ict_setVariable(string key, string value)
+{
+    int id = -1;
+    int unused_id = -1;
+
+    int i;
+    for(i = 0; i < ict_variable_count; i++)
+    {
+        if(ict_variable_keys[i] == key &&
+           ict_variable_status[i] == ICT_VARIABLE_USED)
+        {
+            id = i;
+            break;
+        }
+        else if(unused_id == -1 &&
+                ict_variable_status[i] == ICT_VARIABLE_UNUSED)
+        {
+            unused_id = i;
+        }
+    }
+
+    if(id == -1)
+    {
+        if(unused_id != -1)
+        {
+            id = unused_id;
+        }
+        else
+        {
+            id = ict_variable_count;
+            ict_variable_count++;
+        }
+    }
+
+    if(value == NULL)
+    {
+        value = "";
+    }
+
+    ict_variable_status[id] = ICT_VARIABLE_USED;
+    ict_variable_keys[id] = key;
+    ict_variable_values[id] = value;
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "setVariable: " + key + "(#" + itoa(id) + ") = " + value);
+
+    return 1;
+}
+
+/**
+ * @date 2006/12/25
+ */
+int ict_deleteVariable(string key)
+{
+    int i;
+    for(i = 0; i < ict_variable_count; i++)
+    {
+        if(ict_variable_keys[i] == key)
+        {
+            ict_variable_status[i] = ICT_VARIABLE_UNUSED;
+            if(i == ict_variable_count - 1)
+            {
+                ict_variable_count--;
+            }
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @param[in] key
+ *
+ * @date 2006/10/21
+ * @private
+ */
+string ict_getVariable(string key)
+{
+    int i;
+    for(i = 0; i < ict_variable_count; i++)
+    {
+        if(ict_variable_keys[i] == key)
+        {
+            Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+                  "getVariable: " + key +
+                  "(#" + itoa(i) + ") = " + ict_variable_values[i]);
+            return ict_variable_values[i];
+        }
+    }
+
+    Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+          "getVariable: key " + key + " not found");
+
+    return "";
+}
+
+/**
+ * '|' で区切られた文字列の中から一つ選んで返す
+ *
+ * @date 2006/10/02
+ * @private
+ */
+string ict_getRandomItem(string src)
+{
+    int lparen;
+    int rparen = 0;
+    string result = "";
+
+    // 文字列中に括弧があるならその外までスキップ
+    string tokens[];
+    int idx_from = 0;
+    while(true)
+    {
+        boolean last = false;
+
+        int idx_bar = ict_strIndexOf(src, "|", idx_from);
+
+        if(idx_bar == -1)
+        {
+            idx_bar = StrLen(src);
+            last = true;
+        }
+
+        int n = lengthof tokens;
+
+        tokens[n] = StrSubstring(src, idx_from, idx_bar - 1);
+        if(tokens[n] == NULL)
+        {
+            tokens[n] = "";
+        }
+        Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+              "getRandomItem: token = " + tokens[n]);
+
+        if(last)
+        {
+            break;
+        }
+
+        idx_from = idx_bar + 1;
+    }
+
+    return tokens[Random(lengthof tokens)];
+}
+
+/**
+ * 文字列をタグと内容に分割する
+ *
+ * 例) tag1:content1;tag2:content2;tag3:content3
+ *     → tags[0] = "tag1", contents[0] = "content1", ...
+ *
+ * @param[in]  str
+ * @param[out] tags
+ * @param[out] contents
+ *
+ * @retval -1       失敗
+ * @retval それ以外 要素数
+ *
+ * @date 2007/03/13
+ * @private
+ */
+int ict_strSplitTagsAndContents(string str, string tags[], string contents[])
+{
+    int n = 0;
+    int p = 0;
+    int p_colon = 0;
+
+    emptyof tags;
+    emptyof contents;
+
+    while((p_colon = ict_strIndexOf(str, ":", p)) != -1)
+    {
+        int p_end = ict_strIndexOf(str, ";", p_colon);
+
+        if(p_end == -1)
+        {
+            p_end = StrLen(str);
+        }
+
+        tags[n] = StrSubstring(str, p, p_colon - 1);
+        contents[n] = StrSubstring(str, p_colon + 1, p_end - 1);
+
+        Debug(DEBUG_LV_TRACE, ICT_LOGDOMAIN,
+              "strSplitTagsAndContents: " +
+              "tag = " + tags[n] + ", " +
+              "content = " + contents[n]);
+
+        p = p_end + 1;
+        n++;
+    }
+
+    return n;
+}
+
+/**
+ * {} の中身を無視する StrIndexOf
+ *
+ * @date 2006/10/23
+ * @private
+ */
+int ict_strIndexOf(string str, string trg, int from)
+{
+    int pos;
+
+    int lp;
+    int rp = from;
+
+    if((pos = StrIndexOf(str, trg, from)) != -1)
+    {
+        // まず { を探して、それに対応する } を探す
+        while((lp = StrIndexOf(str, "{", rp)) != -1)
+        {
+            rp = ict_searchPairParenthesis(str, lp);
+
+            if(lp < pos && pos < rp)
+            {
+                // trg は {} の内側にある
+                // } の外側でもう一度探す
+                pos = StrIndexOf(str, trg, rp);
+            }
+        }
+    }
+    else
+    {
+        // 普通に見つからない
+        return -1;
+    }
+
+    return pos;
+}
+
+/**
+ * @date 2006/10/03
+ * @private
+ */
+int ict_searchPairParenthesis(string str, int lparen)
+{
+    int pos = lparen;
+    int nest = 0;
+
+    while(nest >= 0)
+    {
+        int l;
+        int r;
+
+        l = StrIndexOf(str, "{", pos + 1);
+        r = StrIndexOf(str, "}", pos + 1);
+
+        if(l != -1 && l < r)
+        {
+            // 閉じ括弧より先に開き括弧がある
+            nest++;
+            pos = l;
+        }
+        else
+        {
+            // 閉じ括弧
+            nest--;
+            pos = r;
+        }
+    }
+
+    return pos;
+}
+
+
+
+// FIXME
+// スコープ切り替え時にアニメーションをどうするか
+// {sw:*} 時に停止/切り替え先アニメーション開始
+
+void ict_enableTalkAnimation()
+{
+    ict_talkanim_enable = true;
+    ict_resumeTalkAnimation();
+}
+
+void ict_disableTalkAnimation()
+{
+    ict_suspendTalkAnimation();
+    ict_talkanim_enable = false;
+}
+
+void ict_suspendTalkAnimation()
+{
+    if(Surface_isAnimationPlaying(SURFACE_ANIMATION_TALK))
+    {
+        Surface_stopAnimation(SURFACE_ANIMATION_TALK);
+    }
+}
+
+void ict_resumeTalkAnimation()
+{
+    if(!Surface_isAnimationPlaying(SURFACE_ANIMATION_TALK))
+    {
+        Surface_playAnimation(SURFACE_ANIMATION_TALK);
+    }
+}
+
+void ict_switchWindow(string winname)
+{
+    ict_talk_window = winname;
+
+    ict_suspendTalkAnimation();
+    Surface_setTargetWindow(winname);
+    ict_resumeTalkAnimation();
+}
+
+
+/**
+ * アニメーションしながらメッセージ表示
+ *
+ * @param[in] str 表示する文字列
+ *
+ * @date 2006/10/25
+ * @private
+ *
+ * from atalk.aya, 2005/01/07 - 2005/05/02
+ */
+void ict_talkAnimated(string winname, string str)
+{
+    int i;
+    int p_str = 0;
+    string ctrl[];
+    int sum_p = 0;
+
+    // アニメーションを停止する文字
+    ctrl[0] = "\p";
+    ctrl[1] = "\c";
+    ctrl[2] = "\w";
+    ctrl[3] = "\s";
+    ctrl[4] = "・";
+    ctrl[5] = "‥";
+    ctrl[6] = "…";
+
+    if(str == "" || str == NULL)
+    {
+        return;
+    }
+
+    for(i = 0; i < lengthof ctrl; i++)
+    {
+        if(StrIndexOf(str, ctrl[i], 0) != -1)
+        {
+            break;
+        }
+    }
+    if(i == lengthof ctrl)
+    {
+        TalkW(winname, str);
+        return;
+    }
+
+    /**
+     * \c, \p 等出力が一時停止する制御文字がある場合、
+     * アニメーションも一時停止させる。
+     */
+
+    // -sum_p == lengthof ctrl : すべての制御文字の検索結果が -1
+    while(- sum_p != lengthof ctrl)
+    {
+        int p_ctrl = StrLen(str);
+        string str_ctrl = "";
+
+        sum_p = 0;
+        for(i = 0; i < lengthof ctrl; i++)
+        {
+            int p;
+
+            // 一番 p_str に近い制御文字を探す
+            if((p = StrIndexOf(str, ctrl[i], p_str)) != -1)
+            {
+                if(p < p_ctrl)
+                {
+                    p_ctrl = p;
+                    str_ctrl = ctrl[i];
+                }
+            }
+
+            sum_p += p;
+        }
+
+        if(p_str < p_ctrl)
+        {
+            TalkW(winname, StrSubstring(str, p_str, p_ctrl - 1));
+        }
+        ict_suspendTalkAnimation();
+        TalkW(winname, str_ctrl);
+        ict_resumeTalkAnimation();
+
+        p_str = p_ctrl + 2;
+    }
+
+    ict_resumeTalkAnimation();
+}
+
+void ICT_setUserNamePropertyKey(string key)
+{
+    ict_username_propkey = key;
+}
+
+void ICT_setUseExtension(boolean use)
+{
+    ict_use_extension = use;
+}
+

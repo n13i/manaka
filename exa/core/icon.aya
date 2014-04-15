@@ -1,0 +1,23 @@
+/**
+ * @date 2006/11/06
+ * @file
+ */
+
+string ICON_CHECKOFF            = "\i(img\\icons\\checkbox_off.hp3,1)";
+string ICON_CHECKON             = "\i(img\\icons\\checkbox_on.hp3,1)";
+string ICON_SCROLLUP_DISABLED   = "\i(img\\icons\\scroll_up0.hp3,1)";
+string ICON_SCROLLUP_ENABLED    = "\i(img\\icons\\scroll_up1.hp3,1)";
+string ICON_SCROLLDOWN_DISABLED = "\i(img\\icons\\scroll_down0.hp3,1)";
+string ICON_SCROLLDOWN_ENABLED  = "\i(img\\icons\\scroll_down1.hp3,1)";
+string ICON_SCROLLBAR0          = "\i(img\\icons\\scroll_bar0.hp3,1)";
+string ICON_SCROLLBAR1          = "\i(img\\icons\\scroll_bar1.hp3,1)";
+string ICON_OK                  = "\i(img\\icons\\ok.hp3,1)";
+string ICON_NG                  = "\i(img\\icons\\ng.hp3,1)";
+string ICON_RETURN              = "\i(img\\icons\\return.hp3,1)";
+string ICON_NEXT                = "\i(img\\icons\\next.hp3,1)";
+string ICON_HELP                = "\i(img\\icons\\help.hp3,1)";
+string ICON_FOLDER              = "\i(img\\icons\\folder.hp3,1)";
+string ICON_FILE                = "\i(img\\icons\\file.hp3,1)";
+string ICON_IM_ONLINE           = "\i(img\\icons\\im_online.hp3,1)";
+string ICON_IM_OFFLINE          = "\i(img\\icons\\im_offline.hp3,1)";
+string ICON_IM_BUSY             = "\i(img\\icons\\im_busy.hp3,1)";

@@ -1,0 +1,1051 @@
+/*-
+ * Copyright (C) 2005-2006 mxproject
+ * All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+/**
+ * シンプルな XML リーダー
+ *
+ * @author   n13i <n13i@m2hq.net>
+ * @version  0.5.3
+ *
+ * @date     2005/05/02 作成
+ * @date     2005/05/07 CDATA セクション・コメントの処理を追加
+ * @date     2005/06/26 コメント修正
+ * @date     2006/01/24 DB プラグインを利用するよう書き直す
+ * @date     2006/03/20 XML_parse で事前に文字コードを変換するよう変更
+ * @date     2006/07/09 返り値を擬似定数化
+ * @date     2006/07/10 トランザクション継続により高速化
+ * @date     2006/11/16
+ *
+ * @note     バックエンドとして DB プラグインを利用するため、
+ *           Chararina 3.20β 以降でのみ動作します。
+ *
+ * @todo     名前空間の処理
+ * @todo     エラーコードの整理 (2006/06/26)
+ * @done     read_position の更新がかなりボトルネックの予感 (2006/07/10)
+ *
+ * @file
+ * @ingroup  XML
+ */
+
+#import "Prototype150.aya"
+#import "Prototype200.aya"
+#import "plugin/db/db.h"
+
+int XML_NODE_DOCUMENT  = 0; ///< ドキュメント
+int XML_NODE_PI        = 1; ///< 処理命令 (Processing Instruction)
+int XML_NODE_ELEMENT   = 2; ///< 要素
+int XML_NODE_ATTRIBUTE = 3; ///< 属性
+int XML_NODE_TEXT      = 4; ///< テキスト
+int XML_NODE_CDATA     = 5; ///< CDATA セクション
+
+int XML_EVENT_ENDELEMENT = 99;
+
+
+int XML_OK = 1;
+int XML_ERROR_DBINIT = -1;
+int XML_ERROR_IO = -2;
+int XML_ERROR_INVALIDHANDLE = -3;
+int XML_ERROR_PARSE = -4;
+
+
+string xml_dbfile_dir = "."; ///< @private
+string xml_lib_version = "$Id: libxml.aya 95 2006-12-27 18:44:41Z naoh $";
+
+boolean xml_db_debug = false;
+
+
+/**
+ * XML ハンドルが使用するテンポラリファイルを置く場所を指定する
+ *
+ * @param[in] dir ディレクトリ
+ *
+ * @note      XML_new() を呼ぶ前に設定しておく必要があります。
+ *            デフォルトでは dat 以下になります。
+ */
+void XML_setTemporaryDir(string dir)
+{
+	xml_dbfile_dir = dir;
+}
+
+/**
+ * libxml.exa のバージョンを得る
+ *
+ * @return バージョン
+ *
+ * @date   2006/07/10 追加
+ */
+string XML_getVersion()
+{
+	// $Id: libxml.aya 95 2006-12-27 18:44:41Z naoh $
+	return StrToken(xml_lib_version, " ", 2);
+}
+
+/**
+ * @date 2006/11/16
+ */
+void XML_setDBDebugMode(boolean debug)
+{
+	xml_db_debug = debug;
+}
+
+/**
+ * XML ハンドルを作成する
+ *
+ * @retval 0以上    XML ハンドル
+ * @retval それ以外 失敗
+ *
+ * @date   2006/03/20 DB プラグインのロードを試行するよう変更
+ */
+int XML_new()
+{
+	if(PluginExists("db") == false)
+	{
+		if(LoadPlugin("db") != 1)
+		{
+			return XML_ERROR_DBINIT;
+		}
+	}
+
+	// テンポラリ DB の作成
+	string filename = xml_dbfile_dir +
+		"\\xml_" + itoa(Time()) + itos("05d", Random(100000)) + ".tmp";
+
+	int dbh;
+	if((dbh = LF_DB_Open(filename)) < 0)
+	{
+		return XML_ERROR_IO;
+	}
+
+	LF_DB_Exec(dbh, "BEGIN TRANSACTION");
+
+	string temporary = "TEMPORARY ";
+	if(xml_db_debug)
+	{
+		temporary = "";
+	}
+
+	// root テーブル
+	LF_DB_Exec(dbh,
+			   "CREATE " + temporary + "TABLE root ("+
+			   "name   TEXT PRIMARY KEY, "+
+			   "int    INTEGER, "+
+			   "string TEXT )");
+	// ファイル名を保存しておく
+	LF_DB_Exec(dbh,
+			   "INSERT INTO root ( name, string )"+
+			   " VALUES ( 'dbfile', '"+LF_DB_Escape(filename)+"' )");
+	// エラー行数
+	LF_DB_Exec(dbh,
+			   "INSERT INTO root ( name, int )"+
+			   " VALUES ( 'error_line', -1 )");
+
+	// 文章に対応するテーブルを作成
+	LF_DB_Exec(dbh,
+			   "CREATE " + temporary + "TABLE document ("+
+			   "id       INTEGER PRIMARY KEY, "+
+			   "parent   INTEGER, "+
+			   "path     TEXT, "+
+			   "type     INTEGER, "+
+			   "data     TEXT )");
+
+	LF_DB_Exec(dbh, "END TRANSACTION");
+
+	return dbh;
+}
+
+/**
+ * @private
+ */
+int xml_getDBHandle(int xml_handle)
+{
+	return xml_handle;
+}
+
+/**
+ * XML ハンドルを破棄する
+ *
+ * @param[in] xml_handle XML ハンドル
+ *
+ * @retval    true  成功
+ * @retval    false 失敗
+ */
+boolean XML_destroy(int xml_handle)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+	string filename = NULL;
+	int sh;
+
+	// 保存しておいた自分自身のファイル名を得る
+	string sql = "SELECT string FROM root WHERE name = 'dbfile' LIMIT 1";
+	if((sh = LF_DB_Start(dbh, sql)) <= 0)
+	{
+		return false;
+	}
+
+	if(LF_DB_Step(sh) == 0)
+	{
+		filename = LF_DB_ColumnText(sh, 0);
+	}
+	LF_DB_End(sh);
+
+	if(filename == NULL)
+	{
+		return false;
+	}
+
+	// ロールバックして終了
+	if(!xml_db_debug)
+	{
+		LF_DB_Exec(dbh, "ROLLBACK TRANSACTION");
+	}
+	else
+	{
+		LF_DB_Exec(dbh, "END TRANSACTION");
+	}
+
+	if(LF_DB_Close(dbh) != 0)
+	{
+		return false;
+	}
+
+	if(!xml_db_debug)
+	{
+		FileDelete(filename);
+	}
+
+	return true;
+}
+
+/**
+ * XML ファイルをパースする
+ *
+ * @param[in] xml_handle
+ * @param[in] filename
+ * @param[in] convert_encoding
+ *
+ * @retval    XML_OK   成功
+ * @retval    それ以外 失敗
+ *
+ * @date      2006/03/20 追加
+ * @date      2006/03/21 返り値変更
+ */
+int XML_parseFromFile(int xml_handle, string filename, boolean convert_encoding)
+{
+	int fh = FileOpen(filename, "r");
+	if(fh < 0)
+	{
+		return XML_ERROR_IO;
+	}
+
+	string xml = "";
+	string line;
+	while((line = FileGets(fh)) != NULL)
+	{
+		xml += line;
+	}
+	FileClose(fh);
+
+	return XML_parse(xml_handle, xml, convert_encoding);
+}
+
+/**
+ * XML をパースする
+ *
+ * @param[in] xml_handle
+ * @param[in] xml
+ * @param[in] convert_encoding
+ *
+ * @retval    XML_OK   成功
+ * @retval    それ以外 失敗
+ *
+ * @date      2006/03/20 事前に文字コードを Shift_JIS に変換するよう変更
+ * @date      2006/03/21 返り値変更
+ */
+int XML_parse(int xml_handle, string xml, boolean convert_encoding)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+
+	if(dbh <= 0)
+	{
+		return XML_ERROR_INVALIDHANDLE;
+	}
+
+	if(xml == NULL || xml == "")
+	{
+		return XML_ERROR_IO;
+	}
+
+	string encoding = "Shift_JIS";
+
+	// 文字コードを (可能であれば) 変換
+	string charset = StrGetCharset(xml);
+	if(charset != NULL)
+	{
+		string tmp = StrCharsetFilter(xml, charset, "SJIS");
+		if(tmp != NULL)
+		{
+			xml = tmp;
+		}
+	}
+
+	// テーブルを空にする
+	LF_DB_Exec(dbh, "DELETE FROM document");
+
+	int lparen;
+	int rparen = -1;
+	int n_parsed = 0;
+
+	int result = XML_OK;
+
+	string path[][];
+	path[0][0] = "1";
+	path[1][0] = "0";
+	path[1][1] = "/";
+
+
+	LF_DB_Exec(dbh, "BEGIN TRANSACTION");
+
+	while((lparen = StrIndexOf(xml, "<", rparen+1)) != -1)
+	{
+		//DBG(StrSubstring(xml, rparen+1, lparen-1)+"\n");
+
+		// 要素内容 ---------------------------------------------------------
+		if(rparen+1 != lparen)
+		{
+			string data = StrSubstring(xml, rparen+1, lparen-1);
+
+			if(StrTrim(data) != "")
+			{
+				xml_parse_addText(dbh, path, data);
+			}
+		}
+
+		// < に対応する > の位置を得る --------------------------------------
+		if(StrSubstring(xml, lparen+1, lparen+8) == "![CDATA[")
+		{
+			if((rparen = StrIndexOf(xml, "]]>", lparen+9)) == -1)
+			{
+				xml_parse_setErrorPosition(dbh, xml, lparen);
+				result = XML_ERROR_PARSE;
+				break;
+			}
+
+			rparen += 2;
+		}
+		else if(StrSubstring(xml, lparen+1, lparen+3) == "!--")
+		{
+			if((rparen = StrIndexOf(xml, "-->", lparen+4)) == -1)
+			{
+				xml_parse_setErrorPosition(dbh, xml, lparen);
+				result = XML_ERROR_PARSE;
+				break;
+			}
+
+			rparen += 2;
+		}
+		else if((rparen = StrIndexOf(xml, ">", lparen+1)) == -1)
+		{
+			xml_parse_setErrorPosition(dbh, xml, lparen);
+			result = XML_ERROR_PARSE;
+			break;
+		}
+		//DBG("lparen="+itoa(lparen)+", rparen="+itoa(rparen)+"\n");
+		//DBG(StrSubstring(xml, lparen, rparen)+"\c\n");
+
+		// タグ内の部分 -----------------------------------------------------
+		if(lparen+1 != rparen)
+		{
+			string elem = StrSubstring(xml, lparen+1, rparen-1);
+			string elem_s;
+			string name;
+
+			string sl = StrSubstring(elem, 0, 0);
+			string el = StrSubstring(elem, StrLen(elem)-1, StrLen(elem)-1);
+
+			// elem の区切り文字を空白に置き換えたものを用意
+			elem_s = xml_parse_replaceSeparators(elem, " ");
+
+			if(StrSubstring(elem, 0, 2) == "!--")
+			{
+				// コメント
+			}
+			else if(StrSubstring(elem, 0, 7) == "![CDATA[")
+			{
+				// CDATA セクション
+				string data = StrSubstring(elem, 8, StrLen(elem)-3);
+
+				//xml_parse_addText(dbh, path, data);
+				xml_parse_addCDataSection(dbh, path, data);
+			}
+			else if(sl == "?" && el == "?")
+			{
+				// Processing Instruction
+				int p;
+
+				p = StrIndexOf(elem_s, " ", 0);
+				string name = StrSubstring(elem, 1, p-1);
+				string data = StrSubstring(elem, p+1, StrLen(elem)-2);
+
+				if(name == "xml")
+				{
+					int i;
+					string attrs[][];
+
+					xml_parse_getAttributes(data, attrs);
+
+					for(i = 0; i < lengthof attrs; i++)
+					{
+						if(convert_encoding &&
+						   StrLower(attrs[i][0]) == "encoding")
+						{
+							encoding = attrs[i][1];
+							//xml = xml_parse_convertEncoding(xml, attrs[i][1]);
+						}
+					}
+				}
+				else
+				{
+					//DBG("[PI:"+name+"]"+data+"\n");
+				}
+			}
+			else if(sl != "/")
+			{
+				// 開始タグ
+				int p;
+
+				if((p = StrIndexOf(elem_s, " ", 0)) == -1)
+				{
+					name = elem;
+				}
+				else
+				{
+					name = StrSubstring(elem, 0, p-1);
+				}
+
+				// 念のため Trim
+				name = StrTrim(name);
+				xml_parse_addStartElement(dbh, path, name);
+
+				if(p != -1)
+				{
+					int i;
+					string attrs[][];
+
+					// 要素の属性値の取得
+					xml_parse_getAttributes(StrSubstring(elem, p+1, StrLen(elem)-1), attrs);
+					for(i = 0; i < lengthof attrs; i++)
+					{
+						xml_parse_addAttribute(dbh,
+							path, attrs[i][0], attrs[i][1]);
+					}
+				}
+				n_parsed++;
+
+				if(el == "/" || el == "?")
+				{
+					// 空要素タグ
+					xml_parse_addEndElement(dbh, path, name);
+				}
+			}
+			else
+			{
+				// 終了タグ
+				name = StrSubstring(elem, 1, StrLen(elem)-1);
+				xml_parse_addEndElement(dbh, path, name);
+			}
+		}
+
+		Wait(0);
+	}
+
+	if(result != XML_OK)
+	{
+		LF_DB_Exec(dbh, "ROLLBACK TRANSACTION");
+		return result;
+	}
+
+	// 最後の > 以降の部分
+	if(rparen != StrLen(xml)-1)
+	{
+		string data = StrSubstring(xml, rparen+1, StrLen(xml)-1);
+		if(StrTrim(data) != "")
+		{
+			xml_parse_addText(dbh, path, data);
+		}
+	}
+
+	// いちいちファイルを読み書きしないように
+	// トランザクションを終了しないでおく
+	//LF_DB_Exec(dbh, "END TRANSACTION");
+
+	// 読み込みポインタを先頭に
+	XML_seek(xml_handle, 0);
+
+	return XML_OK;
+}
+
+/**
+ * 区切り文字を指定した文字列で置換する
+ * @private
+ */
+string xml_parse_replaceSeparators(string str, string replace)
+{
+	string result = str;
+
+	result = StrReplace(result, StrDecodeURL("%09"), replace);  // TAB
+	result = StrReplace(result, StrDecodeURL("%0d"), replace);  // CR
+	result = StrReplace(result, StrDecodeURL("%0a"), replace);  // LF
+
+	return result;
+}
+
+/**
+ * 属性名と属性値のペアを抽出する
+ *
+ * @param[in]  elem   < > の中身
+ * @param[out] attrs
+ *
+ * @retval    得られた属性値の数
+ *
+ * @private
+ */
+int xml_parse_getAttributes(string elem, string attrs[][])
+{
+	int n_attrs = 0;
+	int pos = 0;
+	string elem_s = xml_parse_replaceSeparators(elem, " ");
+
+	emptyof attrs;
+
+	//Talk("elem_s=["+elem_s+"]\n");
+
+	while(pos < StrLen(elem))
+	{
+		if(StrSubstring(elem_s, pos, pos) != " ")
+		{
+			int eq;
+
+			if((eq = StrIndexOf(elem, "=", pos)) != -1)
+			{
+				int val_st;
+				int val_en;
+
+				string attr;
+				string value;
+
+				//Talk("eq="+itoa(eq)+"\n");
+
+				// 属性名
+				attr = StrToken(StrSubstring(elem_s, pos, eq-1), " ", 0);
+
+				if((val_st = StrIndexOf(elem, "\"", eq+1)) != -1)
+				{
+					if((val_en = StrIndexOf(elem, "\"", val_st+1)) != -1)
+					{
+						// 属性値
+						value = StrSubstring(elem, val_st+1, val_en-1);
+
+						//Talk(itoa(n_attrs)+":"+attr+"="+value+"\n");
+						attrs[n_attrs][0] = attr;
+						attrs[n_attrs][1] = value;
+						n_attrs++;
+
+						pos = val_en;
+					}
+				}
+			}
+		}
+
+		pos++;
+	}
+
+	return n_attrs;
+}
+
+/**
+ * 文字コードを Shift JIS に変換する
+ *
+ * @param[in] str      変換対象文字列
+ * @param[in] encoding エンコーディング
+ *
+ * @return    変換された文字列
+ *            変換できなかった場合は str がそのまま返る
+ *
+ * @note      Chararina の仕様上、変換可能なエンコーディングは
+ *            Shift_JIS, EUC-JP, ISO-2022-JP, UTF-8 に限られる。
+ *
+ * @private
+ */
+string xml_parse_convertEncoding(string str, string encoding)
+{
+	string r;
+	string charset_in;
+
+	encoding = StrUpper(encoding);
+
+	if(encoding == "SHIFT_JIS")
+	{
+		return str;
+	}
+	else if(encoding == "EUC-JP")
+	{
+		charset_in = "EUC";
+	}
+	else if(encoding == "ISO-2022-JP")
+	{
+		charset_in = "JIS";
+	}
+	else if(encoding == "UTF-8")
+	{
+		// NOTE: only 3.x
+		charset_in = "UTF-8";
+	}
+
+	if((r = StrCharsetFilter(str, charset_in, "SJIS")) != NULL)
+	{
+		return r;
+	}
+
+	// 変換失敗
+	return str;
+}
+
+/**
+ * @private
+ */
+string xml_parse_getPathString(string path[][])
+{
+	int i;
+	int path_level = atoi(path[0][0]);
+	string path_str = "";
+
+	if(path_level == 1)
+	{
+		return "/";
+	}
+
+	for(i = 2; i <= path_level; i++)
+	{
+		path_str += "/" + path[i][1];
+	}
+
+	return path_str;
+}
+
+/**
+ * @private
+ */
+boolean xml_parse_addStartElement(int dbh, string path[][], string name)
+{
+	int path_level = atoi(path[0][0]);
+
+	string sql;
+	sql = "INSERT INTO document " +
+		  "( parent, path, type, data ) VALUES (" +
+		  path[path_level][0] + ", " +
+		  "'" + LF_DB_Escape(xml_parse_getPathString(path)) + "', " +
+		  itoa(XML_NODE_ELEMENT) + ", " +
+		  "'" + LF_DB_Escape(name) + "')";
+
+	if(LF_DB_Exec(dbh, sql) != 0)
+	{
+		return false;
+	}
+
+	path_level++;
+	path[path_level][0] = itoa(LF_DB_LastInsertRowId(dbh));
+	path[path_level][1] = name;
+	path[0][0] = itoa(path_level);
+
+	return true;
+}
+
+/**
+ * @private
+ */
+boolean xml_parse_addEndElement(int dbh, string path[][], string name)
+{
+	int path_level = atoi(path[0][0]);
+
+	string sql;
+	sql = "INSERT INTO document "+
+		"( parent, path, type, data ) VALUES ("+
+		path[path_level][0]+", "+
+		"'"+LF_DB_Escape(xml_parse_getPathString(path))+"', "+
+		itoa(XML_EVENT_ENDELEMENT)+", "+
+		"'"+LF_DB_Escape(name)+"')";
+
+	if(LF_DB_Exec(dbh, sql) != 0)
+	{
+		return false;
+	}
+
+	path_level--;
+	path[0][0] = itoa(path_level);
+
+	return true;
+}
+
+/**
+ * @private
+ */
+boolean xml_parse_addAttribute(int dbh, string path[][], string name, string value)
+{
+	int path_level = atoi(path[0][0]);
+
+	string sql;
+	sql = "INSERT INTO document "+
+		"( parent, path, type, data ) VALUES ("+
+		path[path_level][0]+", "+
+		"'"+LF_DB_Escape(xml_parse_getPathString(path))+"@"+name+"', "+
+		itoa(XML_NODE_ATTRIBUTE)+", "+
+		"'"+LF_DB_Escape(value)+"')";
+
+	return (LF_DB_Exec(dbh, sql) == 0);
+}
+
+/**
+ * @private
+ */
+boolean xml_parse_addText(int dbh, string path[][], string text)
+{
+	int path_level = atoi(path[0][0]);
+
+	string sql;
+	sql = "INSERT INTO document "+
+		"( parent, path, type, data ) VALUES ("+
+		path[path_level][0]+", "+
+		"'"+LF_DB_Escape(xml_parse_getPathString(path))+"', "+
+		itoa(XML_NODE_TEXT)+", "+
+		"'"+LF_DB_Escape(text)+"')";
+
+	return (LF_DB_Exec(dbh, sql) == 0);
+}
+
+/**
+ * @private
+ */
+boolean xml_parse_addCDataSection(int dbh, string path[][], string cdata)
+{
+	// FIXME 空白の扱いが Text とは異なる
+	return xml_parse_addText(dbh, path, cdata);
+}
+
+/**
+ * @date 2006/12/22
+ * @private
+ */
+void xml_parse_setErrorPosition(int dbh, string xml, int pos)
+{
+	int line = xml_getLineFromPosition(xml, pos);
+
+	LF_DB_Exec(dbh,
+			   "UPDATE root SET int = " + itoa(line) +
+			   "WHERE name = 'error_line'");
+}
+
+/**
+ * パースエラーの起きた行の行数を得る
+ *
+ * @date 2006/12/22
+ */
+int XML_getErrorLine(int xml_handle)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+	int sh = LF_DB_Start(dbh,
+						 "SELECT int FROM root" +
+						 " WHERE name = 'error_line'");
+	if(sh <= 0)
+	{
+		return -1;
+	}
+
+	int result;
+	if(LF_DB_Step(sh) != 0)
+	{
+		result = -1;
+	}
+	else
+	{
+		result = LF_DB_ColumnInt(sh, 0);
+	}
+	LF_DB_End(sh);
+
+	return result;
+}
+
+
+
+int XML_seek(int xml_handle, int position)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+
+	LF_DB_Exec(dbh,
+			   "INSERT INTO root ( name, int ) "+
+			   "VALUES ( 'read_position', "+itoa(position)+" )");
+
+	return position;
+}
+
+/**
+ * @retval -1 もうノードがない
+ * @retval それ以外  読み込み成功
+ */
+int XML_readNextNode(int xml_handle)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+	string sql;
+
+	int result = XML_NODE_ATTRIBUTE;
+
+	while(result == XML_NODE_ATTRIBUTE)
+	{
+		sql = "UPDATE root SET int = int+1 "+
+			"WHERE name = 'read_position'";
+		LF_DB_Exec(dbh, sql);
+
+		sql = "SELECT document.type FROM root,document"+
+			" WHERE root.name = 'read_position'"+
+			" AND document.id = root.int";
+		int sh = LF_DB_Start(dbh, sql);
+		if(sh <= 0)
+		{
+			result = -1;
+			break;
+		}
+
+		if(LF_DB_Step(sh) != 0)
+		{
+			result = -1;
+		}
+		else
+		{
+			result = LF_DB_ColumnInt(sh, 0);
+		}
+		LF_DB_End(sh);
+	}
+
+	return result;
+}
+
+/**
+ * 現在のノードを得る
+ *
+ * @param[in]  xml_handle XML ハンドル
+ * @param[out] path 現在のノードのパス
+ * @param[out] data ノードの値
+ * @param[out] attr 要素ノードの場合に属性値を格納する配列
+ *
+ * @retval     ノードの型
+ *
+ * @date       2006/03/20 最後の属性値しか返さなかった問題を修正
+ */
+int XML_getNode(int xml_handle, string &path, string &data, string attr[][])
+{
+	int dbh = xml_getDBHandle(xml_handle);
+	string sql;
+
+	int type = -1;
+
+	sql = "SELECT document.id, document.path, document.type, document.data" +
+		  " FROM root,document" +
+		  " WHERE root.name = 'read_position'" +
+		  " AND document.id = root.int";
+	int sh = LF_DB_Start(dbh, sql);
+	if(sh > 0)
+	{
+		int id = -1;
+
+		if(LF_DB_Step(sh) == 0)
+		{
+			id   = LF_DB_ColumnInt(sh, 0);
+			path = LF_DB_ColumnText(sh, 1);
+			type = LF_DB_ColumnInt(sh, 2);
+			data = LF_DB_ColumnText(sh, 3);
+		}
+		LF_DB_End(sh);
+
+		if(id >= 0 && type == XML_NODE_ELEMENT)
+		{
+			int sh_attr;
+
+			emptyof attr;
+
+			sql = "SELECT path, data FROM document" +
+				  " WHERE parent = " + itoa(id) +
+				  " AND type = " + itoa(XML_NODE_ATTRIBUTE);
+			sh_attr = LF_DB_Start(dbh, sql);
+			if(sh_attr > 0)
+			{
+				int i;
+				for(i = 0; LF_DB_Step(sh_attr) == 0; i++)
+				{
+					attr[i][0] = StrToken(LF_DB_ColumnText(sh_attr, 0), "@", 1);
+					attr[i][1] = LF_DB_ColumnText(sh_attr, 1);
+				}
+			}
+			LF_DB_End(sh_attr);
+		}
+	}
+
+	return type;
+}
+
+
+/**
+ * XML_getNode で得た属性の配列から指定した名前の属性の属性値を得る
+ *
+ * @param[in]  attr
+ * @param[in]  name 属性名
+ *
+ * @return 属性値
+ *
+ * @date 2006/11/16
+ */
+string XML_getAttribute(string attr[][], string name)
+{
+	int i;
+
+	for(i = 0; i < lengthof attr; i++)
+	{
+		if(attr[i][0] == name)
+		{
+			return attr[i][1];
+		}
+	}
+
+	return "";
+}
+
+/*
+int XML_getNodeType(int xml_handle)
+{
+}
+*/
+
+/**
+ * @param[out] attr_names[]
+ * @param[out] attr_values[]
+ */
+/*
+int XML_getNodeAttributes(int xml_handle, string attr_names[], string attr_values[])
+{
+}
+*/
+
+/**
+ * @brief 現在のノードのパスを得る
+ */
+string XML_getNodePath(int xml_handle)
+{
+	int dbh = xml_getDBHandle(xml_handle);
+	string sql;
+
+	string path = NULL;
+
+	sql = "SELECT document.path FROM root,document" +
+		" WHERE root.name = 'read_position'" +
+		" AND document.id = root.int";
+	int sh = LF_DB_Start(dbh, sql);
+	if(sh > 0)
+	{
+		if(LF_DB_Step(sh) == 0)
+		{
+			path = LF_DB_ColumnText(sh, 0);
+		}
+		LF_DB_End(sh);
+	}
+
+	return path;
+}
+
+/**
+ * @brief ノード型を文字列で得る
+ * @todo  名前変更 → XML_getNodeTypeAsString
+ */
+string XML_getNodeTypeAsString(int type)
+{
+	string name;
+
+	switch(type)
+	{
+	case 0:  // XML_NODE_DOCUMENT:
+		name = "ドキュメント";
+		break;
+	case 1:  // XML_NODE_PI:
+		name = "処理命令";
+		break;
+	case 2:  // XML_NODE_ELEMENT:
+		name = "要素";
+		break;
+	case 3:  // XML_NODE_ATTRIBUTE:
+		name = "属性";
+		break;
+	case 4:  // XML_NODE_TEXT:
+		name = "テキスト";
+		break;
+	case 5:  // XML_NODE_CDATA:
+		name = "CDATAセクション";
+		break;
+	case 99: // XML_EVENT_ENDELEMENT:
+		name = "要素終了";
+		break;
+	default:
+		name = "(unknown)";
+		break;
+	}
+
+	return name;
+}
+
+
+/**
+ * 文字列中の指定した位置が何行目かを得る
+ *
+ * @param[in] str
+ * @param[in] pos
+ *
+ * @retval 行数
+ *
+ * @todo 2006/12/22 改行コードが CR の場合
+ * @date 2006/12/22
+ *
+ * @private
+ */
+int xml_getLineFromPosition(string str, int pos)
+{
+	int line = 0;
+	string newline = StrDecodeURL("%0a");
+
+	int p = -1;
+	while((p = StrIndexOf(str, newline, p + 1)) >= 0)
+	{
+		line++;
+
+		if(p > pos)
+		{
+			break;
+		}
+	}
+
+	return line;
+}

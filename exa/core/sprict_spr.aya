@@ -1,0 +1,898 @@
+/**
+ * MX kernel 7
+ * SPRICT - Script Processor with Interpreter-like Command Translator
+ *
+ * @author  n13i <n13i@m2hq.net>
+ *
+ * @version 0.1.0
+ * @date    2006/10/02 作成
+ *
+ * 開発にあたり、
+ * - extMessage() (友瀬遙さん)
+ * - eeval (Praesens, Inc.)
+ * 等を参考にさせていただきました。感謝致します。
+ *
+ * @ingroup Sprict
+ *
+ * @file
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "plugin/db/db.h"
+#import "lib/mxcl/mxcl.h"
+#import "lib/mxcl/pwsconst.h"
+#import "sprict_ict.h"
+#import "surface.h"
+#import "msgbox.h"
+#import "debug.h"
+
+string  SPR_ERROR = "__ERROR__";
+
+
+string  SPR_PROP            = "MXkernel\\Sprict";
+string  SPR_PROP_SEQENTRY   = "MXkernel\\Sprict\\SequentialEntry";
+string  SPR_PROP_LASTCALLED = "MXkernel\\Sprict\\LastCalled";
+
+int     SPR_SOURCE_NONE = -1;
+int     SPR_SOURCE_FILE = 0;
+int     SPR_SOURCE_DB   = 1;
+
+string  SPR_OPTION_DEFAULT = "__DEFAULT__";
+string  SPR_TAG_IGNORE     = "__IGNORE__";
+string  SPR_TAG_NONE       = "__NONE__";
+
+string  SPR_LOGDOMAIN = "SPR/Sprict";
+string  SPR_TEMPDBFILE = "local\\tmp_sprict.db";
+
+int     SPR_SCOPE_FILE    = 0;
+int     SPR_SCOPE_SECTION = 1;
+int     SPR_SCOPE_ENTRY   = 2;
+
+int     spr_source = -1;               ///< @private
+string  spr_source_location = "";      ///< @private
+int     spr_dbh = -1;                  ///< @private
+string  spr_current_section_id = "";   ///< @private
+string  spr_entry_tagdelim = "";
+
+// sprict_ict.exa側の関数のプロトタイプ宣言
+string ict_procScript(string script, boolean ignore_output);
+void ict_enableTalkAnimation();
+void ict_disableTalkAnimation();
+
+/**
+ * Sprict サブシステムの初期化を行う
+ *
+ * @retval 0 失敗
+ * @retval 1 成功
+ */
+int SPR_init()
+{
+    int i;
+
+    if(PluginExists("db") == false)
+    {
+        if(LoadPlugin("db") != 1)
+        {
+            Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+                  "load: db plugin does not exist");
+            return 0;
+        }
+    }
+
+    MXCL_makePropertyTree(SPR_PROP);
+    MXCL_makePropertyTree(SPR_PROP_SEQENTRY);
+
+    Debug_registerLogDomain(SPR_LOGDOMAIN);
+    Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN, "init");
+
+    spr_entry_tagdelim = StrDecodeURL("%01");
+
+    return 1;
+}
+
+/**
+ * Sprict サブシステムが利用しているリソースを破棄
+ *
+ * @date 2006/10/17
+ */
+void SPR_destroy()
+{
+    if(spr_dbh >= 0)
+    {
+        LF_DB_Close(spr_dbh);
+        spr_dbh = -1;
+    }
+
+    if(spr_source == SPR_SOURCE_FILE)
+    {
+        //emptyof spr_data;
+        FileDelete(SPR_TEMPDBFILE);
+    }
+
+    spr_source = -1;
+    spr_source_location = "";
+//    spr_talk_window = "";
+    spr_current_section_id = "";
+
+    Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN, "destroy");
+}
+
+
+/**
+ * 前回ロードしたスクリプトをリロードする
+ *
+ * @retval 0 失敗
+ * @retval 1 成功
+ *
+ * @date 2006/10/17
+ */
+int SPR_reload()
+{
+    string loc = spr_source_location;
+
+    SPR_destroy();
+    SPR_init();
+
+    return SPR_load(loc);
+}
+
+
+/**
+ * スクリプトファイルをロードする
+ *
+ * @param[in] location ファイル
+ *                     file:ファイル名 or db:ファイル名
+ *
+ * @retval 0 失敗
+ * @retval 1 成功
+ *
+ * @date 2006/10/09
+ */
+int SPR_load(string location)
+{
+    int p;
+    int src;
+    string file;
+
+    if((p = StrIndexOf(location, ":", 0)) == -1)
+    {
+        src = SPR_SOURCE_FILE;
+        file = location;
+    }
+    else
+    {
+        string scm = StrSubstring(location, 0, p - 1);
+
+        if(scm == "file")
+        {
+            src = SPR_SOURCE_FILE;
+        }
+        else if(scm == "db")
+        {
+            src = SPR_SOURCE_DB;
+        }
+        else
+        {
+            Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+                  "load: unknown schema '" + scm + "'");
+            return 0;
+        }
+
+        file = StrSubstring(location, p + 1, StrLen(location) - 1);
+    }
+
+    if(src == SPR_SOURCE_FILE)
+    {
+        int r;
+
+        if((r = spr_loadFromFile(file)) != 1)
+        {
+            Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+                  "load: loadFromFile failed");
+            return 0;
+        }
+    }
+    else if(src == SPR_SOURCE_DB)
+    {
+        if((spr_dbh = LF_DB_Open(file)) < 0)
+        {
+            Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+                  "load: " + LF_DB_ErrorMessage(spr_dbh));
+            return 0;
+        }
+        Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN,
+              "load: dbh = " + itoa(spr_dbh));
+    }
+
+    spr_source = src;
+    spr_source_location = location;
+    return 1;
+}
+
+/**
+ * テキストファイルから DB ハンドルへ
+ *
+ * @date 2006/10/08
+ * @private
+ */
+int spr_loadFromFile(string file)
+{
+    int dbh;
+    if((dbh = LF_DB_Open(SPR_TEMPDBFILE)) < 0)
+    {
+        return 0;
+    }
+
+    LF_DB_Exec(dbh, "BEGIN TRANSACTION");
+    LF_DB_Exec(dbh, "DROP TABLE sections");
+    LF_DB_Exec(dbh, "DROP TABLE entries");
+    LF_DB_Exec(dbh,
+//               "CREATE TEMPORARY TABLE sections ("+
+               "CREATE TABLE sections ("+
+               "id         INTEGER PRIMARY KEY,"+
+               "section    TEXT,"+
+               "option TEXT,"+
+               "seq        TEXT )");
+    LF_DB_Exec(dbh,
+//               "CREATE TEMPORARY TABLE entries ("+
+               "CREATE TABLE entries ("+
+               "sid      INTEGER,"+
+               "tags     TEXT,"+
+               "entry    TEXT )");
+
+    // テキストファイルをパースして DB へ格納
+    spr_parseAndStore(file, dbh);
+
+    LF_DB_Exec(dbh, "END TRANSACTION");
+
+    Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN,
+          "loadFromFile: done");
+
+    spr_dbh = dbh;
+
+    return 1;
+}
+
+/**
+ * テキストファイルをパースして DB へ
+ *
+ * @date 2007/05/02
+ *
+ * @note import のネストに注意
+ * @private
+ */
+int spr_parseAndStore(string file, int dbh)
+{
+    int fh;
+
+    if((fh = FileOpen(file, "r")) == -1)
+    {
+        return 0;
+    }
+
+    string sql;
+
+    int section_id = -1;
+    int in_scope = 0;
+
+    string tags = "";
+    string entry = "";
+
+    boolean loop = true;
+
+    while(loop)
+    {
+        string line = FileGets(fh);
+        string lh = NULL;
+
+        // 前処理
+        if(line != NULL)
+        {
+            line = StrTrim(line);
+            if(line == "")
+            {
+                lh = "";
+            }
+            else
+            {
+                lh = StrSubstring(line, 0, 0);
+            }
+        }
+
+        // エントリの終了
+        if(in_scope == SPR_SCOPE_ENTRY &&
+           (lh == NULL || lh == "@" || lh == "#" || lh == "*"))
+        {
+            // エントリバッファにあるものを INSERT
+
+            sql = "INSERT INTO entries (sid, tags, entry) "
+                + "VALUES ("
+                + itoa(section_id) + ", "
+                + "'" + LF_DB_Escape(tags) + "', "
+                + "'" + LF_DB_Escape(entry) + "')";
+
+            if(LF_DB_Exec(dbh, sql) != 0)
+            {
+                // fail
+            }
+
+            tags = "";
+            entry = "";
+
+            // エントリ終了後はセクションスコープにいるものとしておく
+            in_scope = SPR_SCOPE_SECTION;
+        }
+
+        if(line == NULL)
+        {
+            // EOF
+            loop = false;
+        }
+        else if(lh == ";" || lh == "")
+        {
+            // comment
+        }
+        else if(lh == "@")
+        {
+            // preprocessor (?) instruction
+
+            if(StrSubstring(line, 1, 6) == "import")
+            {
+                string import_file = StrSubstring(line, 8, StrLen(line) - 1);
+                if(import_file != NULL)
+                {
+                    // FIXME パスの指定はどうする？
+                    import_file = StrTrim(import_file);
+                    spr_parseAndStore(import_file, dbh);
+                }
+            }
+
+            in_scope = SPR_SCOPE_FILE;
+        }
+        else if(lh == "#" && StrLen(line) > 1)
+        {
+            // セクションを DB に挿入し ID を得る
+
+            string section = StrSubstring(line, 1, StrLen(line) - 1);
+
+            string sec; string opt; string seq;
+            spr_getSectionInfo(section, sec, opt, seq);
+
+            string optIns; string optCond;
+            string seqIns; string seqCond;
+            if(opt == "")
+            {
+                optIns = "NULL";
+                optCond = "IS NULL";
+            }
+            else
+            {
+                optIns = "'" + LF_DB_Escape(opt) + "'";
+                optCond = "= " + optIns;
+            }
+            if(seq == "")
+            {
+                seqIns = "NULL";
+                seqCond = "IS NULL";
+            }
+            else
+            {
+                seqIns = "'" + LF_DB_Escape(seq) + "'";
+                seqCond = "= " + seqIns;
+            }
+
+            sql = "INSERT INTO sections (section, option, seq) "
+                + "VALUES ("
+                + "'" + LF_DB_Escape(sec) + "', "
+                + optIns + ", "
+                + seqIns + ")";
+
+            if(LF_DB_Exec(dbh, sql) == 0)
+            {
+                /*
+                 * If a table contains a column of type
+                 * INTEGER PRIMARY KEY, then that column becomes
+                 * an alias for the ROWID.
+                 *             -- http://www.sqlite.org/autoinc.html
+                 */
+                section_id = LF_DB_LastInsertRowId(dbh);
+            }
+            else
+            {
+                // 既に同じセクションが insert 済みのようなら
+                // そのセクションの ID を探す
+
+                sql = "SELECT id FROM sections WHERE "
+                + "section = '" + LF_DB_Escape(sec) + "' AND "
+                + "option " + optCond + " AND "
+                + "seq " + seqCond;
+
+                int sh;
+                if((sh = LF_DB_Start(dbh, sql)) < 0)
+                {
+                    // FIXME unknown error
+                    section_id = -1;
+                }
+                else
+                {
+                    if(LF_DB_Step(sh) == 0)
+                    {
+                        section_id = LF_DB_ColumnInt(sh, 0);
+                    }
+                    LF_DB_End(sh);
+                }
+            }
+
+            in_scope = SPR_SCOPE_SECTION;
+        }
+        else if((lh == "*" && in_scope == SPR_SCOPE_SECTION) ||
+                in_scope == SPR_SCOPE_ENTRY)
+        {
+            string e;
+
+            if(in_scope == SPR_SCOPE_SECTION)
+            {
+                // 新しいエントリの開始
+
+                // tag
+                // "*:" 以降のスペース・タブまたは行末までをタグとして扱う
+
+                int pos = 1;
+                if(StrSubstring(line, 1, 1) == ":")
+                {
+                    int pos_tab;
+                    int pos_spc;
+
+                    pos_tab = StrIndexOf(line, StrDecodeURL("%09"), 2);
+                    pos_spc = StrIndexOf(line, " ", 2);
+
+                    if(pos_tab == -1 && pos_spc == -1)
+                    {
+                        pos = StrLen(line);
+                    }
+                    else if(pos_tab < pos_spc)
+                    {
+                        pos = pos_tab;
+                    }
+                    else if(pos_tab >= pos_spc)
+                    {
+                        pos = pos_spc;
+                    }
+
+                    tags = StrSubstring(line, 2, pos - 1);
+                }
+
+                if(tags == NULL || tags == "")
+                {
+                    tags = SPR_TAG_NONE;
+                }
+
+                e = StrSubstring(line, pos, StrLen(line) - 1);
+
+                in_scope = SPR_SCOPE_ENTRY;
+            }
+            else
+            {
+                e = StrSubstring(line, 0, StrLen(line) - 1);
+            }
+
+            if(e != NULL)
+            {
+                entry += StrTrim(e);
+            }
+        }
+        else
+        {
+            Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+                  "loadFromFile: unhandled line: " + line);
+        }
+    }
+
+    FileClose(fh);
+
+    return 1;
+}
+
+/**
+ * セクションを実行する
+ *
+ * @param[in]  section
+ * @param[in]  option_expr
+ *
+ * @retval     0 失敗
+ * @retval     1 成功
+ *
+ * @date       2006/10/11
+ */
+int SPR_run(string section, string option_expr)
+{
+    string result;
+
+    ict_enableTalkAnimation();
+    result = spr_runSection(section, option_expr, false);
+    ict_disableTalkAnimation();
+
+    if(result == "")
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/**
+ * セクションの実行結果を文字列として得る
+ *
+ * @param[in]  section
+ * @param[in]  option_expr
+ *
+ * @return     実行結果
+ *
+ * @date       2006/10/11
+ */
+string SPR_getText(string section, string option_expr)
+{
+    return spr_runSection(section, option_expr, true);
+}
+
+/**
+ * スクリプトファイルの任意のセクションを実行
+ *
+ * @param[in]  section
+ * @param[in]  option_expr
+ * @param[in]  ignore_output
+ *
+ * @date       2006/10/09
+ * @private
+ */
+string spr_runSection(string section, string option_expr,
+                         boolean ignore_output)
+{
+    int i;
+
+    string opt;
+    string entry;
+
+    if(spr_source == SPR_SOURCE_NONE)
+    {
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN, "runSection: uninitialized");
+        return "";
+    }
+
+    // option_expr にマッチするオプションを探す
+    if((opt = SPR_getOptionMatched(section, option_expr))
+        == SPR_ERROR)
+    {
+        return "[" + section + "." + option_expr + "]";
+    }
+
+    // エントリを取得
+    if((entry = spr_getEntry(section, opt)) == "")
+    {
+        return "[" + section + "." + opt + "]";
+//        return NULL;
+    }
+
+    spr_current_section_id = section + "." + opt;
+
+    spr_setLastCalled(section, opt, Time());
+
+    return ict_procScript(entry, ignore_output);
+}
+
+/**
+ * @date 2006/10/16
+ */
+int SPR_getLastCalled(string section, string option)
+{
+    // FIXME オプションのマッチング処理
+    return atoi(GetProperty(SPR_PROP_LASTCALLED +
+                            "\\" + section + "." + option));
+}
+
+/**
+ * @date 2006/10/16
+ * @private
+ */
+void spr_setLastCalled(string section, string option, int time)
+{
+    PutProperty(SPR_PROP_LASTCALLED +
+                "\\" + section + "." + option, itoa(time));
+}
+
+/**
+ * セクションが指定したオプションを持つかどうかを返す
+ *
+ * @param[in] section
+ * @param[in] option_expr
+ *
+ * @retval SPR_ERROR マッチするオプションが存在しない
+ * @retval それ以外     マッチしたオプション名
+ *
+ * @date 2006/10/20
+ */
+string SPR_getOptionMatched(string section, string option_expr)
+{
+    int     i;
+    string  opts[];
+    string  opts_match[];
+    int     n_matches = 0;
+    boolean default_exists = false;
+
+    // 指定された 1 セクションを取得
+    if(SPR_getOptions(section, opts) <= 0)
+    {
+        Debug(DEBUG_LV_INFO, SPR_LOGDOMAIN,
+              "getOptionMatched: section '" + section + "' not found");
+        return SPR_ERROR;
+    }
+
+    // その中からオプションがマッチするものを選択
+    for(i = 0; i < lengthof opts; i++)
+    {
+        if(opts[i] == SPR_OPTION_DEFAULT)
+        {
+            default_exists = true;
+        }
+        else if((opts[i] == "" && option_expr == "") ||
+                BREGMatch("/^" + opts[i] + "$/k", option_expr) > 0)
+        {
+            opts_match[n_matches] = opts[i];
+            n_matches++;
+        }
+    }
+
+    if(n_matches == 0)
+    {
+        if(!default_exists)
+        {
+            Debug(DEBUG_LV_INFO, SPR_LOGDOMAIN,
+                  "getOptionMatched: option '" +
+                  option_expr + "' not found");
+            return SPR_ERROR;
+        }
+        else
+        {
+            // デフォルトオプションがあればそれを選択
+            opts_match[0] = SPR_OPTION_DEFAULT;
+        }
+    }
+
+    // マッチしたオプションの中から 1 つ選ぶ
+    return opts_match[Random(n_matches)];
+}
+
+/**
+ * 指定されたセクションの持つサブセクションを全て返す
+ *
+ * @param[in]  section     セクション名
+ * @param[out] options section に含まれるサブセクションのリスト
+ *
+ * @retval -1    失敗
+ * @retval 0以上 サブセクション数
+ *
+ * @date 2006/10/09
+ */
+int SPR_getOptions(string section, string options[])
+{
+    int i;
+    int n_options = 0;
+
+    emptyof options;
+
+    string sql;
+    int sth;
+
+    sql  = "SELECT option FROM sections";
+    sql += " WHERE section = '" + LF_DB_Escape(section) + "'";
+
+    if((sth = LF_DB_Start(spr_dbh, sql)) < 0)
+    {
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+              "getOptions: sql " + sql +
+              " execution error: " + LF_DB_ErrorMessage(spr_dbh));
+        return -1;
+    }
+
+    while(LF_DB_Step(sth) == 0)
+    {
+        options[n_options] = LF_DB_ColumnText(sth, 0);
+        n_options++;
+    }
+    LF_DB_End(sth);
+
+    return n_options;
+}
+
+/**
+ * 指定されたセクションのエントリを 1 つ返す
+ *
+ * @param[in] section セクションのキー
+ * @param[in] option  セクションのオプション
+ *
+ * @retval 空文字列 失敗
+ * @retval それ以外 エントリ
+ *
+ * @note シーケンシャルトークの選択はここで行われる
+ * @todo タグの処理
+ *
+ * @date 2006/10/09
+ * @private
+ */
+string spr_getEntry(string section, string option)
+{
+    int i;
+    string entries[];
+    string seq; string seqNext;
+    string sequences[][];
+
+    if((seqNext = spr_getNextSequence(section, option)) == NULL)
+    {
+        seqNext = "0";
+    }
+
+    string sql;
+    int sth;
+    string optCond;
+    int sid;
+
+    if(option == "")
+    {
+        optCond = "IS NULL";
+    }
+    else
+    {
+        optCond = " = '" + LF_DB_Escape(option) + "'";
+    }
+
+    /*
+     * 1. seqNext にマッチする sequence が存在するなら
+     *    そのエントリを返す
+     *
+     * 2. seqNext にマッチする sequence が存在しないなら
+     *     2.1. sequence が '*' のエントリが存在するなら
+     *          そのエントリを返す
+     *     2.2. sequence が '' のエントリが存在するなら
+     *          そのエントリを返す
+     */
+
+    // 数値 → * → NULL の順にソートされるので先頭 1 つを得る
+    sql  = "SELECT id, seq FROM sections";
+    sql += " WHERE section = '" + LF_DB_Escape(section) + "'";
+    sql += " AND option " + optCond;
+    sql += " AND (seq = '" + LF_DB_Escape(seqNext) + "' OR";
+    sql += "      seq = '*' OR seq IS NULL)";
+    sql += " ORDER BY seq DESC LIMIT 1";
+
+//    Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN, "getEntry: sql = " + sql);
+
+    if((sth = LF_DB_Start(spr_dbh, sql)) < 0)
+    {
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN, "getEntry: sql " + sql +
+              "execution error: " + LF_DB_ErrorMessage(spr_dbh));
+        return "";
+    }
+
+    if(LF_DB_Step(sth) != 0)
+    {
+        // 行がない
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+              "getEntry: can't get any entry");
+        LF_DB_End(sth);
+        return "";
+    }
+
+    sid = LF_DB_ColumnInt(sth, 0);
+    seq = LF_DB_ColumnText(sth, 1);
+    LF_DB_End(sth);
+
+    // 各エントリを取得
+    sql  = "SELECT entry, tags FROM entries";
+    sql += " WHERE sid = " + LF_DB_Escape(itoa(sid));
+
+    if((sth = LF_DB_Start(spr_dbh, sql)) < 0)
+    {
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN,
+              "getEntry: LF_DB_Start failed");
+        return "";
+    }
+
+    int n_entries = 0;
+    for(i = 0; LF_DB_Step(sth) == 0; i++)
+    {
+        string tags = LF_DB_ColumnText(sth, 1);
+
+        // FIXME
+        if(tags != SPR_TAG_IGNORE)
+        {
+            entries[n_entries] = LF_DB_ColumnText(sth, 0);
+            n_entries++;
+        }
+    }
+    LF_DB_End(sth);
+
+    // 進める
+    if(seq != "" && seq != NULL && seq != "*")
+    {
+        spr_setNextSequence(section, option, itoa(atoi(seq) + 1));
+    }
+
+    if(lengthof entries == 0)
+    {
+        Debug(DEBUG_LV_ERROR, SPR_LOGDOMAIN, "getEntry: entry not found");
+        return "";
+    }
+
+    Debug(DEBUG_LV_TRACE, SPR_LOGDOMAIN, "getEntry: found " +
+          itoa(lengthof entries) + " entries");
+
+    // ランダムに 1 つエントリを返す
+    return entries[Random(lengthof entries)];
+}
+
+/**
+ * @date 2006/10/16
+ * @private
+ */
+string spr_getNextSequence(string section, string option)
+{
+    return GetProperty(SPR_PROP_SEQENTRY +
+                       "\\" + section + "." + option);
+}
+
+/**
+ * @date 2006/10/16
+ * @private
+ */
+void spr_setNextSequence(string section, string option, string value)
+{
+    PutProperty(SPR_PROP_SEQENTRY +
+                "\\" + section + "." + option, value);
+}
+
+/**
+ * @param[in]  expr
+ * @param[out] section
+ * @param[out] option
+ * @param[out] sequence
+ *
+ * @date 2006/10/09
+ * @private
+ */
+void spr_getSectionInfo(string expr,
+                           string &section, string &option, string &sequence)
+{
+    int dot; int colon;
+
+    // section.option:sequence
+
+    dot   = StrIndexOf(expr, ".", 0);
+    colon = StrIndexOf(expr, ":", 0);
+
+    if(dot == -1 && colon == -1)
+    {
+        section  = expr;
+        option   = "";
+        sequence = "";
+    }
+    else if(colon == -1)
+    {
+        section  = StrSubstring(expr, 0, dot - 1);
+        option   = StrSubstring(expr, dot + 1, StrLen(expr) - 1);
+        sequence = "";
+    }
+    else if(dot == -1)
+    {
+        section  = StrSubstring(expr, 0, colon - 1);
+        option   = "";
+        sequence = StrSubstring(expr, colon + 1, StrLen(expr) - 1);
+    }
+    else
+    {
+        section  = StrSubstring(expr, 0, dot - 1);
+        option   = StrSubstring(expr, dot + 1, colon - 1);
+        sequence = StrSubstring(expr, colon + 1, StrLen(expr) - 1);
+    }
+}

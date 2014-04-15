@@ -1,0 +1,203 @@
+/*
+  エントリポイントとなる標準アクションに対する処理
+*/
+
+#import "prototype150.aya"
+#import "core/debug.h"
+#import "core/surface.h"
+#import "core/msgbox.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+#import "core/lib/mxcl/mxcl.h"
+#import "core/lib/mxcl/pwsconst.h"
+
+#import "visit.h"
+#import "test.h"
+#import "properties.h"
+#import "version.h"
+#import "weather.h"
+
+boolean startup_common_done = false;
+boolean startup_migrated = false;
+
+action StartUp@(false)
+{
+    startup_common();
+    Debug(DEBUG_LV_TRACE, "StartUp", "Persona StartUp");
+    startup_greeting();
+}
+
+action ChangedStartUp@(false)
+{
+    startup_common();
+    Debug(DEBUG_LV_TRACE, "StartUp", "Persona ChangedStartUp");
+    startup_greeting();
+}
+
+action ScriptUpdated@(false)
+{
+    // ・ScriptUpdatedが成功以外(負)の場合は処理系の再起動は発生しない？
+    // ・ScriptUpdatedが8の場合(実行形式ファイルあり)は更新自体は成功
+    // 　しているので再初期化必要
+    // ・更新後の処理系再起動時，EXAファイルパッケージの選択状態は
+    // 　引き継がれるみたい(DEFAULTに戻らない)
+
+    int code = atoi(GetProperty("..\\System\\ScriptUpdated"));
+
+    Debug(DEBUG_LV_TRACE, "StartUp",
+            "Persona ScriptUpdated (code=" + itoa(code) + ")");
+
+    if(!startup_common_done)
+    {
+        Debug(DEBUG_LV_TRACE, "StartUp",
+                "should be re-initialized!");
+        startup_common();
+    }
+
+    if(code < 0)
+    {
+        // 失敗
+        ICT_setExternalVariable("scriptupdated_code", itoa(code));
+        SPR_run("ScriptUpdated", itoa(code));
+    }
+    else
+    {
+        Surface_setTargetWindow(PWS_WINNAME_MAIN);
+        Surface_showImageSet("000");
+        Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+
+        if(startup_migrated)
+        {
+            SPR_run("Migrated", "");
+        }
+        else
+        {
+            SPR_run("ScriptUpdated", itoa(code));
+        }
+
+        // 前回アップデート時とバージョン数が一緒だった場合
+        if(GetProperty("LastUpdatedVersionCount") == VERSION_COUNT)
+        {
+            SPR_run("UpdateTrivial", "");
+        }
+
+        SPR_run("UpdateDetail", VERSION_COUNT);
+        PutProperty("LastUpdatedVersionCount", VERSION_COUNT);
+
+        // PSNファイルのアップデートをついでにやっとく
+        int psn = MXCL_updatePsnFile();
+        Debug(DEBUG_LV_TRACE, "StartUp",
+            "PSN file update result = " + itoa(psn));
+    }
+}
+
+void startup_common()
+{
+    MakeFolder("local");
+
+    // --- plugins
+    LoadPlugin("db");
+
+    // --- core
+    Debug_init();
+    Debug(DEBUG_LV_TRACE, "StartUp", "startup_common()");
+
+    MsgBox_setImagePath("img\\msgbox");
+    Surface_init();
+    SPR_init();
+    SPR_load("file:etc\\main.spct");
+    ICT_init();
+    ICT_setUseExtension(true);
+
+    // --- persona
+    Visit_init();
+    Test_init();
+    Prop_init();
+    Version_setProfile();
+    Weather_init();
+
+    ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
+
+    // ----------------------------------------------------------------------
+    Surface_load("img\\surface");
+    MsgBox_setStyle("default");
+    MsgBox_setSize(16, 6);
+
+    //Debug(DEBUG_LV_TRACE, "StartUp",
+    //      "Boot_StartUpMode = " + GetProperty("Boot_StartUpMode"));
+
+    PutProperty("CurrentVersionCount", VERSION_COUNT);
+
+    startup_migrated = Prop_migrateFromV2();
+
+    startup_common_done = true;
+}
+
+void startup_greeting()
+{
+    Surface_setTargetWindow(PWS_WINNAME_MAIN);
+    Surface_showImageSet("000");
+    Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+
+    if(startup_migrated)
+    {
+        SPR_run("Migrated", "");
+    }
+
+    if(Prop_getFirstBootTime() < 0)
+    {
+        Prop_setFirstBootTime(-1);
+        firstboot_greeting();
+    }
+    else
+    {
+        int interval = Time() - Prop_getShutdownTime();
+        string interval_tag;
+
+        Debug(DEBUG_LV_TRACE, "StartUp",
+                "interval = " + itoa(interval));
+
+        if(interval < 300)
+        {
+            // 5 分以内
+            interval_tag = "5min";
+        }
+        else if(interval < 3600 * 2)
+        {
+            // 2 時間以内
+            interval_tag = "2hours";
+        }
+        else if(interval < 86400 * 3)
+        {
+            // 3 日以内
+            interval_tag = "normal";
+        }
+        else if(interval < 86400 * 10)
+        {
+            // 10 日以内
+            interval_tag = "10days";
+        }
+        else
+        {
+            // 10 日以上～
+            interval_tag = "longtime";
+        }
+
+        if(interval >= 3600 * 2)
+        {
+            //Kernel_recordStartUpTimeFrequency(Time());
+        }
+
+        Talk("\e");
+        SPR_run("StartUp", interval_tag + "_" + itoa(Hour()));
+    }
+
+    Prop_setLastBootTime(-1);
+}
+
+void firstboot_greeting()
+{
+    Talk("\e");
+    SPR_run("FirstBoot", "");
+}
+

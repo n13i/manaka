@@ -1,0 +1,202 @@
+/**
+ * MX kernel 7
+ * 吹き出し制御
+ *
+ * @author  n13i <n13i@m2hq.net>
+ *
+ * @version 0.1.0
+ * @date    2006/07/29 作成
+ *
+ * @file
+ * @ingroup MsgBox
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "lib/mxcl/pwsconst.h"
+#import "lib/ini/ini.h"
+#import "debug.h"
+
+string msgBox_image_path = ".";
+
+int msgBox_size_w_stack[];
+int msgBox_size_h_stack[];
+int msgBox_size_stack_index = 0;
+
+/**
+ * メッセージボックス設定ファイルと画像ファイルのパスを指定する
+ */
+void MsgBox_setImagePath(string path)
+{
+    msgBox_image_path = path;
+}
+
+/**
+ * メッセージボックスのサイズを変更する
+ *
+ * @param[in] winname 対象ウィンドウ名
+ * @param[in] width   幅
+ * @param[in] height  高さ
+ * @note width/heightに-1を指定すると，指定した項目は変更しません。
+ */
+void MsgBox_setSizeW(string winname, int width, int height)
+{
+    if(width != -1)
+    {
+        PutProperty("VdConfig\\" + winname + "MsgBox\\SizeW", itoa(width));
+    }
+    if(height != -1)
+    {
+        PutProperty("VdConfig\\" + winname + "MsgBox\\SizeH", itoa(height));
+    }
+
+    ReflectConfigW(winname);
+}
+void MsgBox_setSize(int width, int height)
+{
+    MsgBox_setSizeW(PWS_WINNAME_MAIN, width, height);
+}
+
+/**
+ * メッセージボックスのサイズを記憶する
+ *
+ * @param[in] winname 対象ウィンドウ名
+ */
+void MsgBox_pushSizeW(string winname)
+{
+    msgBox_size_w_stack[msgBox_size_stack_index]
+        = atoi(GetProperty("VdConfig\\" + winname + "MsgBox\\SizeW"));
+    msgBox_size_h_stack[msgBox_size_stack_index]
+        = atoi(GetProperty("VdConfig\\" + winname + "MsgBox\\SizeH"));
+    msgBox_size_stack_index++;
+}
+void MsgBox_pushSize()
+{
+    MsgBox_pushSizeW(PWS_WINNAME_MAIN);
+}
+
+/**
+ * メッセージボックスのサイズを戻す
+ *
+ * @param[in] winname 対象ウィンドウ名
+ */
+void MsgBox_popSizeW(string winname)
+{
+    if(msgBox_size_stack_index <= 0) { return; }
+
+    msgBox_size_stack_index--;
+    MsgBox_setSizeW(winname,
+            msgBox_size_w_stack[msgBox_size_stack_index],
+            msgBox_size_h_stack[msgBox_size_stack_index]);
+}
+void MsgBox_popSize()
+{
+    MsgBox_popSizeW(PWS_WINNAME_MAIN);
+}
+
+
+/**
+ * INIファイルからメッセージボックスの設定を読み込み，変更する
+ *
+ * @param[in] winname 対象ウィンドウ名
+ * @param[in] name    設定名称
+ *                    (MsgBox_setImagePath()で指定したパス以下のフォルダ名)
+ */
+int MsgBox_setStyleW(string winname, string name)
+{
+    int i;
+    string token;
+    string ini[][];
+    string keys[];
+    string path = msgBox_image_path + "\\" + name;
+
+    string mbkeys =
+        "BGColor," +
+        "FontColor," +
+        "HighlightText," +
+        "Highlight," +
+        "UrlColor," +
+        "UrlStyle," +
+        "Style," +
+        "DrawRange," +
+        "FrameTopBMP," +
+        "FrameMiddleBMP," +
+        "FrameBottomBMP," +
+        "BackgroundBMP," +
+        "WaitCursorBMP," +
+        "PageCursorBMP," +
+        "WaitCursorPos," +
+        "PageCursorPos," +
+        "WaitCursorBlink," +
+        "PageCursorBlink," +
+        "ScrollUpBMP," +
+        "ScrollUpPos," +
+        "ScrollDownBMP," +
+        "ScrollDownPos," +
+        "CloseBMP," +
+        "ClosePos," +
+        "TransparentBorder";
+
+    INI_new(ini);
+    if(INI_read(ini, path + "\\msgbox.ini") != 1)
+    {
+        Debug(DEBUG_LV_ERROR, "MsgBox",
+              "setStyleW: can't read msgbox.ini in " + path);
+        return 0;
+    }
+
+    if(INI_getKeys(ini, "MsgBox", keys) < 0)
+    {
+        Debug(DEBUG_LV_ERROR, "MsgBox", "setStyleW: section MsgBox not found");
+        return 0;
+    }
+
+    // 一旦プロパティの値をリセット
+    for(i = 0; (token = StrToken(mbkeys, ",", i)) != NULL; i++)
+    {
+        PutProperty("VdConfig\\" + winname + "MsgBox\\" + token, "");
+    }
+
+    for(i = 0; i < lengthof keys; i++)
+    {
+        string key = keys[i];
+        string value = INI_getValue(ini, "MsgBox", key);
+
+        if(StrSearch(mbkeys, key) == 1)
+        {
+            if(StrSubstring(key, StrLen(key) - 3, StrLen(key) - 1) == "BMP")
+            {
+                // 画像ファイル名にパスを付加する
+                if(StrIndexOf(value, ",", 0) != -1)
+                {
+                    int j;
+                    string item[];
+
+                    for(j = 0; (token = StrToken(value, ",", j)) != NULL; j++)
+                    {
+                        item[j] = path + "\\" + token;
+                    }
+
+                    value = StrJoin(",", item);
+                }
+                else
+                {
+                    value = path + "\\" + value;
+                }
+            }
+
+            PutProperty("VdConfig\\" + winname + "MsgBox\\" + key, value);
+        }
+    }
+
+    ReflectConfigW(winname);
+
+    INI_destroy(ini);
+
+    return 1;
+}
+int MsgBox_setStyle(string name)
+{
+    return MsgBox_setStyleW(PWS_WINNAME_MAIN, name);
+}

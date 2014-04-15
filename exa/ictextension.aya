@@ -1,0 +1,52 @@
+#import "prototype150.aya"
+#import "prototype300.aya"
+#import "core/sprict_ict.h"
+#import "weather.h"
+
+boolean ICTExtension_execCommand(string cmd, string cmd_arg,
+                                 boolean ignore_output, string &output)
+{
+    if(cmd == "x-weather")
+    {
+        if(cmd_arg == "available")
+        {
+            if(Weather_getTimeFromLastReceived() >= 3600)
+            {
+                output = "0";
+            }
+            else
+            {
+                output = "1";
+            }
+            return true;
+        }
+        else if(cmd_arg == "today" || cmd_arg == "tomorrow")
+        {
+            string w[];
+            if(cmd_arg == "tomorrow")
+            {
+                BREGSplit("/,/", Weather_getDay(1), w);
+                ICT_setExternalVariable("x-weather-day", "ñæì˙");
+            }
+            else
+            {
+                BREGSplit("/,/", Weather_getDay(0), w);
+                ICT_setExternalVariable("x-weather-day", "ç°ì˙");
+            }
+            ICT_setExternalVariable("x-weather-area", w[0]);
+            ICT_setExternalVariable("x-weather-telop", w[1]);
+            ICT_setExternalVariable("x-weather-tempmax", w[2]);
+            ICT_setExternalVariable("x-weather-tempmin", w[3]);
+            output = "";
+            return true;
+        }
+    }
+    else if(cmd == "x-hour")
+    {
+        output = itoa(Hour());
+        return true;
+    }
+
+    return false;
+}
+

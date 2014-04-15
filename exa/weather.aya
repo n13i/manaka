@@ -1,0 +1,178 @@
+#import "prototype150.aya"
+
+#import "core/iccomm.h"
+
+string WEATHER_PROP_ROOT = "Weather";
+string WEATHER_PROP_LASTMSGCHK = "Weather\\MessageLastCheckedTime";
+string WEATHER_PROP_LASTRECV = "Weather\\MessageLastReceivedTime";
+string WEATHER_PROP_FORECAST = "Weather\\Forecast";
+
+string WEATHER_SERVER_NAME = "NH-EX-WEATHER";
+int WEATHER_CHECKMSG_INTERVAL = 60;
+
+boolean weather_isInitialized = false;
+
+void Weather_init()
+{
+    MakePropertyTree(WEATHER_PROP_ROOT);
+    weather_isInitialized = true;
+}
+
+void weather_parseBroadcastMessage(string body)
+{
+    MakePropertyTree(WEATHER_PROP_FORECAST);
+
+    int i = 0;
+    string kv;
+    string key;
+    string value;
+
+    while((kv = StrToken(body, ",", i)) != NULL)
+    {
+        key = StrToken(kv, "=", 0);
+        if(key != NULL)
+        {
+            value = StrToken(kv, "=", 1);
+
+            if(value == NULL)
+            {
+                value = "";
+            }
+            else
+            {
+                value = StrDecodeURL(value);
+            }
+
+            PutProperty(WEATHER_PROP_FORECAST + "\\" + key, value);
+            i++;
+        }
+    }
+}
+
+boolean weather_isTimeCheckingMessage()
+{
+    if(!weather_isInitialized) { return false; }
+
+    string t = GetProperty(WEATHER_PROP_LASTMSGCHK);
+    if(t == NULL)
+    {
+        t = "0";
+    }
+    return (Time() >= atoi(t) + WEATHER_CHECKMSG_INTERVAL);
+}
+
+action Weather_getMessage@(weather_isTimeCheckingMessage())
+{
+    PutProperty(WEATHER_PROP_LASTMSGCHK, itoa(Time()));
+
+    int time_lastrecv = 0;
+    if(GetProperty(WEATHER_PROP_LASTRECV) != NULL)
+    {
+        time_lastrecv = atoi(GetProperty(WEATHER_PROP_LASTRECV));
+    }
+
+    string messages[][];
+    int count = ICComm_getMatchingMessages("/^own$/", "/^" + WEATHER_SERVER_NAME + "$/", "/^WEATHER\\/1\\.0 /", messages);
+
+    int i;
+    for(i = 0; i < count; i++)
+    {
+        int time = atoi(messages[i][0]);
+        string pid = messages[i][1];
+        string persona = messages[i][2];
+        string message = messages[i][3];
+
+        string header = StrToken(message, "\n", 0);
+
+        if(StrToken(message, " ", 0) == "WEATHER/1.0")
+        {
+            string desc = StrToken(header, " ", 1);
+            string code = StrToken(header, " ", 2);
+
+            if(atoi(code) == 100)
+            {
+                string body = StrSubstring(message, StrIndexOf(message, "\n", 0) + 1, StrLen(message) - 1);
+                weather_parseBroadcastMessage(body);
+            }
+
+            if(time > time_lastrecv)
+            {
+                time_lastrecv = time;
+            }
+        }
+        ICComm_deleteMessage(time);
+    }
+
+    PutProperty(WEATHER_PROP_LASTRECV, itoa(time_lastrecv));
+}
+
+int Weather_getTimeFromLastReceived()
+{
+    string t = GetProperty(WEATHER_PROP_LASTRECV);
+    if(t == NULL) { t = "0"; }
+    return Time() - atoi(t);
+}
+
+string Weather_getDay(int day)
+{
+    /*
+     * day: 0=今日, 1=明日, 2=明後日
+     * フォーマット
+     * エリア,天気,最高気温,最低気温
+     * 関東 東京都 東京,晴れ,12,5
+     */
+
+    int target = Time() + 86400 * day;
+    int target_ymd = toYear(target) * 10000 + toMonth(target) * 100 + toDate(target);
+    string day_key = NULL;
+
+    int i;
+    for(i = 0; i < 3; i++)
+    {
+        string date = GetProperty(WEATHER_PROP_FORECAST + "\\date" + itoa(i));
+        if(date != NULL && date != "")
+        {
+            int idate = atoi(date);
+            int ymd = toYear(idate) * 10000 + toMonth(idate) * 100 + toDate(idate);
+            if(ymd == target_ymd)
+            {
+                day_key = itoa(i);
+                break;
+            }
+        }
+    }
+
+    string area = GetProperty(WEATHER_PROP_FORECAST + "\\area");
+    string pref = GetProperty(WEATHER_PROP_FORECAST + "\\pref");
+    string city = GetProperty(WEATHER_PROP_FORECAST + "\\city");
+
+    string ret = "";
+    if(area == NULL || area == "" || pref == NULL || pref == "" || city == NULL || city == "")
+    {
+        ret += "不明,";
+    }
+    else
+    {
+        ret += area + " " + pref + " " + city + ",";
+    }
+
+    if(day_key == NULL)
+    {
+        ret += "不明,不明,不明";
+    }
+    else
+    {
+        string telop = GetProperty(WEATHER_PROP_FORECAST + "\\telop" + day_key);
+        string tmax = GetProperty(WEATHER_PROP_FORECAST + "\\tempmax" + day_key);
+        string tmin = GetProperty(WEATHER_PROP_FORECAST + "\\tempmin" + day_key);
+
+        if(telop == NULL || telop == "") { telop = "不明"; }
+        if(tmax == NULL || tmax == "") { tmax = "不明"; }
+        if(tmin == NULL || tmin == "") { tmin = "不明"; }
+
+        ret += telop + "," + tmax + "," + tmin;
+    }
+
+    return ret;
+}
+

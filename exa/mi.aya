@@ -1,0 +1,35 @@
+/**
+ * ‚Ü‚È‚©‚¢‚À‚è
+ *
+ * @date 2006/11/06
+ */
+
+#import "prototype150.aya"
+#import "core/sprict_spr.h"
+
+
+string MI_getOneQuestion()
+{
+    string questions[];
+    int qid;
+
+    if(MI_getQuestions(questions) < 1)
+    {
+        return "";
+    }
+
+    return questions[Random(lengthof questions)];
+}
+
+int MI_getQuestions(string questions[])
+{
+    return SPR_getOptions("MI", questions);
+}
+
+void MI_answer(string question)
+{
+    if(question != "" && question != NULL)
+    {
+        SPR_run("MI", question);
+    }
+}

@@ -1,0 +1,322 @@
+/**
+ * MX kernel 7
+ * デバッグメッセージ表示用ウィンドウその他
+ *
+ * @ingroup Debug
+ *
+ * @file
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "plugin/db/db.h"
+#import "lib/mxcl/mxcl.h"
+#import "lib/mxcl/pwsconst.h"
+
+string DEBUG_WINDOWNAME = "__DEBUG__";
+string DEBUG_PROP       = "MXkernel\\Debug";
+
+int DEBUG_LV_FATAL = 0;
+int DEBUG_LV_ERROR = 1;
+int DEBUG_LV_WARN  = 64;
+int DEBUG_LV_INFO  = 128;
+int DEBUG_LV_DEBUG = 192;
+int DEBUG_LV_TRACE = 255;
+
+void Debug_init()
+{
+	MXCL_makePropertyTree(DEBUG_PROP);
+
+	if(GetProperty(DEBUG_PROP + "\\ShowWindow") == "1")
+	{
+		Debug_openWindow();
+	}
+
+	MenuItemAdd("デバッグ\nログウィンドウ表示",
+				PWS_MENU_NORMAL, 0, PWS_CB_INTERRUPT,
+				debug_onToggleDebugWindow, "");
+	MenuItemSetState("デバッグ\nログウィンドウ表示", debug_isWindowOpened());
+
+	MenuItemAdd("デバッグ\n動作ログ出力",
+				PWS_MENU_NORMAL, 0, PWS_CB_INTERRUPT,
+				debug_onToggleLogWriteToFile, "");
+	MenuItemSetState("デバッグ\n動作ログ出力", debug_getLogWriteToFile());
+
+	MenuItemAdd("デバッグ\nログレベル\nFATAL",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_FATAL));
+	MenuItemAdd("デバッグ\nログレベル\nERROR",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_ERROR));
+	MenuItemAdd("デバッグ\nログレベル\nWARN",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_WARN));
+	MenuItemAdd("デバッグ\nログレベル\nINFO",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_INFO));
+	MenuItemAdd("デバッグ\nログレベル\nDEBUG",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_DEBUG));
+	MenuItemAdd("デバッグ\nログレベル\nTRACE",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onChangeLogLevel, itoa(DEBUG_LV_TRACE));
+	MenuItemSetState("デバッグ\nログレベル\n" +
+					 debug_getLogLevelString(debug_getLogLevel()), true);
+
+	MenuItemAdd("デバッグ\nリスタート",
+				PWS_MENU_GROUP, 1, PWS_CB_INTERRUPT,
+				debug_onClickRestart, "");
+}
+
+int Debug_openWindow()
+{
+	if(!CreatePersonaWindow(DEBUG_WINDOWNAME, NULL))
+	{
+		return 0;
+	}
+
+	PutProperty(DEBUG_PROP + "\\ShowWindow", "1");
+
+	PutProperty("VdConfig\\" + DEBUG_WINDOWNAME + "MainWin\\Place", "3");
+	PutProperty("VdConfig\\" + DEBUG_WINDOWNAME + "MsgBox\\SizeW", "40");
+	PutProperty("VdConfig\\" + DEBUG_WINDOWNAME + "MsgBox\\SizeH", "20");
+	PutProperty("VdConfig\\" + DEBUG_WINDOWNAME + "MsgBox\\BGColor", "000000");
+	PutProperty("VdConfig\\" + DEBUG_WINDOWNAME + "MsgBox\\FontColor", "ffffff");
+	ReflectConfigW(DEBUG_WINDOWNAME);
+
+	SetTalkWaitModeW(DEBUG_WINDOWNAME, PWS_TALK_NOWAIT);
+
+	LoadBitmapW(DEBUG_WINDOWNAME, "img\\emotion\\base.hp3");
+	DisplayImageW(DEBUG_WINDOWNAME, PWS_EFFECT_NONE);
+
+	RegisterMouseUpFunction(
+		DEBUG_WINDOWNAME,
+		PWS_EVENTCB_BUTTON_LEFT,
+		PWS_CB_NORMAL,
+		debug_onLeftClick);
+
+	//TalkW(DEBUG_WINDOWNAME, "[debug window opened]\n");
+
+	return 1;
+}
+
+int Debug_closeWindow()
+{
+	if(!IsPersonaWindowExists(DEBUG_WINDOWNAME))
+	{
+		return 0;
+	}
+
+	DestroyPersonaWindow(DEBUG_WINDOWNAME);
+	PutProperty(DEBUG_PROP + "\\ShowWindow", "0");
+
+	return 1;
+}
+
+void Debug_registerLogDomain(string domain)
+{
+	// stub
+}
+
+void Debug(int level, string module, string message)
+{
+	_Debug(level, "", -1, "", module, message);
+}
+
+void _Debug(int level, string file, int line, string func,
+			string module, string message)
+{
+	if(debug_getLogWriteToFile())
+	{
+		if(!PluginExists("db"))
+		{
+			LoadPlugin("db");
+		}
+
+		if(PluginExists("db"))
+		{
+			int dbh = LF_DB_Open("local\\debuglog.db");
+			if(dbh > 0)
+			{
+				LF_DB_Exec(dbh,
+						   "CREATE TABLE log (" +
+						   "    id INTEGER PRIMARY KEY," +
+						   "    level INTEGER," +
+						   "    module TEXT," +
+						   "    message TEXT," +
+						   "    timestamp INTEGER" +
+						   ")");
+				LF_DB_Exec(dbh,
+						   "INSERT INTO log VALUES (" +
+						   "    NULL," +
+						   "    " + itoa(level) + "," +
+						   "    '" + module + "'," +
+						   "    '" + message + "'," +
+						   "    " + itoa(Time()) +
+						   ")");
+				LF_DB_Close(dbh);
+			}
+		}
+	}
+
+	if(!IsPersonaWindowExists(DEBUG_WINDOWNAME))
+	{
+		return;
+	}
+
+	if(level <= debug_getLogLevel())
+	{
+		TalkW(DEBUG_WINDOWNAME,
+			  itos("02d", Hour()) + ":" + itos("02d", Minute()) + ":" +
+			  itos("02d", Second()) + " " +
+			  "\fc(" + debug_getLogLevelColor(level) + ")" +
+			  "[" + debug_getLogLevelString(level) + ":" +
+			  module + ":" +
+			  file + "," + itoa(line) + "] " +
+			  ExcludeMsgBoxTag(message) + "\_fc\n");
+	}
+}
+
+void debug_onToggleDebugWindow(string item, string param)
+{
+	if(debug_isWindowOpened())
+	{
+		Debug_closeWindow();
+	}
+	else
+	{
+		Debug_openWindow();
+	}
+
+	MenuItemSetState(item, debug_isWindowOpened());
+}
+
+void debug_setLogWriteToFile(boolean use)
+{
+	MXCL_makePropertyTree(DEBUG_PROP);
+
+	if(use)
+	{
+		PutProperty(DEBUG_PROP + "\\LogWriteToFile", "1");
+	}
+	else
+	{
+		PutProperty(DEBUG_PROP + "\\LogWriteToFile", "0");
+	}
+}
+
+boolean debug_getLogWriteToFile()
+{
+	return (GetProperty(DEBUG_PROP + "\\LogWriteToFile") == "1");
+}
+
+void debug_onToggleLogWriteToFile(string item, string param)
+{
+	debug_setLogWriteToFile(!debug_getLogWriteToFile());
+	MenuItemSetState(item, debug_getLogWriteToFile());
+}
+
+void debug_onLeftClick(string winname, int x, int y, string posinfname)
+{
+	ShowMsgBoxW(DEBUG_WINDOWNAME);
+}
+
+boolean debug_isWindowOpened()
+{
+	return IsPersonaWindowExists(DEBUG_WINDOWNAME);
+}
+
+
+
+void debug_onChangeLogLevel(string item, string param)
+{
+	debug_setLogLevel(atoi(param));
+	MenuItemSetState(item, true);
+}
+
+void debug_setLogLevel(int level)
+{
+	PutProperty(DEBUG_PROP + "\\LogLevel", itoa(level));
+}
+
+int debug_getLogLevel()
+{
+	string level;
+
+	if((level = GetProperty(DEBUG_PROP + "\\LogLevel")) == NULL)
+	{
+		PutProperty(DEBUG_PROP + "\\LogLevel", "1");
+		return 1;
+	}
+
+	return atoi(level);
+}
+
+string debug_getLogLevelString(int level)
+{
+	if(level == DEBUG_LV_FATAL)
+	{
+		return "FATAL";
+	}
+	else if(level == DEBUG_LV_ERROR)
+	{
+		return "ERROR";
+	}
+	else if(level == DEBUG_LV_WARN)
+	{
+		return "WARN ";
+	}
+	else if(level == DEBUG_LV_INFO)
+	{
+		return "INFO ";
+	}
+	else if(level == DEBUG_LV_DEBUG)
+	{
+		return "DEBUG";
+	}
+	else if(level == DEBUG_LV_TRACE)
+	{
+		return "TRACE";
+	}
+	else
+	{
+		return "-----";
+	}
+}
+
+string debug_getLogLevelColor(int level)
+{
+	if(level == DEBUG_LV_FATAL)
+	{
+		return "ff0000";
+	}
+	else if(level == DEBUG_LV_ERROR)
+	{
+		return "ffff00";
+	}
+	else if(level == DEBUG_LV_WARN)
+	{
+		return "ff00ff";
+	}
+	else if(level == DEBUG_LV_INFO)
+	{
+		return "00ff00";
+	}
+	else if(level == DEBUG_LV_DEBUG)
+	{
+		return "00ffff";
+	}
+	else if(level == DEBUG_LV_TRACE)
+	{
+		return "dddddd";
+	}
+	else
+	{
+		return "ffffff";
+	}
+}
+
+void debug_onClickRestart(string item, string param)
+{
+	SwitchPackage("DEFAULT");
+}

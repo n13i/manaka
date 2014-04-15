@@ -1,0 +1,172 @@
+/*-
+ * Copyright (C) 2006 mxproject
+ * All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+/**
+ * @file
+ * @brief    PersonaWare/Chararina 擬似定数
+ *
+ * @author   n13i <n13i@m2hq.net>
+ * @version  0.1.6
+ *
+ * @date     2006/03/14 作成
+ * @date     2006/07/15 MSGBOX_TALKWAIT / SYSCB_BOOTSTYLE 追加
+ * @date     2006/07/19 MENU_STYLE 追加
+ * @date     2006/07/20 EVENTCB 追加
+ * @date     2006/07/23 GRAPHIC_ANIMATION 追加
+ * @date     2006/07/25 OUTPUT_CANCEL 追加
+ * @date     2006/08/09 NETWORK_METHOD 追加
+ * @date     2006/08/09 EDITBOX_TYPE → INPUT_TYPE に変更
+ * @date     2006/08/09 WINDOW → ENV_WINDOW に変更
+ *
+ * @ingroup  pwsconst
+ */
+
+/**
+ * @defgroup pwsconst PersonaWare/Chararina 擬似定数
+ * @{
+ */
+
+string PWS_WINNAME_MAIN = "";
+
+/**
+ * @defgroup Callback コールバック関数呼び出し方式
+ * @{
+ */
+int PWS_CB_NORMAL    = 0;  ///< 基底状態時のみ呼び出し
+int PWS_CB_INTERRUPT = 1;  ///< 割り込みにより呼び出し
+/* @} */
+
+/**
+ * @defgroup SystemCallback システムコールバック関数
+ * @date     2006/07/15 追加
+ * @note     cAppeared/cDisappeared
+ * @{
+ */
+int PWS_SYSCB_BOOTSTYLE_NORMAL    = 0; ///< 通常キャラクター
+int PWS_SYSCB_BOOTSTYLE_CHARADELI = 1; ///< キャラデリキャラクター
+int PWS_SYSCB_BOOTSTYLE_ARTICLE   = 2; ///< 訪問記事キャラクター
+/* @} */
+
+/**
+ * @defgroup Network ネットワーク関数
+ * @date     2006/08/09 追加
+ * @note     GetHTTP/ThrowHTTP
+ * @{
+ */
+int PWS_NETWORK_METHOD_GET  = 0;       ///< GET
+int PWS_NETWORK_METHOD_POST = 1;       ///< POST
+/* @} */
+
+/**
+ * @defgroup Menu メニュー関数
+ * @date     2006/07/19 追加
+ * @note     MenuItemAdd
+ * @{
+ */
+int PWS_MENU_NORMAL    = 0;      ///< 通常/チェックメニュー
+int PWS_MENU_GROUP     = 1;      ///< グループメニュー
+int PWS_MENU_SEPARATOR = 2;      ///< セパレータ
+/* @} */
+
+/**
+ * @defgroup GetEnvironment 環境取得関数
+ * @date     2006/03/18 追加
+ * @date     2006/08/09 WINDOW → ENV_WINDOW に変更
+ * @note     GetWindowWidth/Height(W)
+ * @{
+ */
+int PWS_WINDOW_MAIN   = 0;         ///< メインウィンドウ
+int PWS_WINDOW_MSGBOX = 1;         ///< 吹き出し
+/* @} */
+
+/**
+ * @defgroup Output 出力関数
+ * @date     2006/07/25 追加
+ * @note     Message(W)
+ * @{
+ */
+int PWS_OUTPUT_CANCEL_DISALLOW = 0;    ///< キャンセルを許可しない
+int PWS_OUTPUT_CANCEL_ALLOW    = 1;    ///< キャンセルを許可する
+/* @} */
+
+/**
+ * @defgroup MessageBox 吹き出し関数
+ * @date     2006/07/15 追加
+ * @note     Set/GetTalkWaitMode(W)
+ * @{
+ */
+int PWS_TALK_NORMAL = 0;    ///< 通常ウェイトモード
+int PWS_TALK_NOWAIT = 1;    ///< ノーウェイトモード
+/* @} */
+
+/**
+ * @defgroup EventCallback 登録型イベントコールバック関数
+ * @date     2006/07/20 追加
+ * @{
+ */
+int PWS_EVENTCB_KIND_ENTER   = 0;      ///< Enter イベント
+int PWS_EVENTCB_KIND_LEAVE   = 1;      ///< Leave イベント
+int PWS_EVENTCB_BUTTON_LEFT  = 0;      ///< 左ボタンイベント
+int PWS_EVENTCB_BUTTON_RIGHT = 1;      ///< 右ボタンイベント
+int PWS_EVENTCB_DND_DRAG     = 0;      ///< ドラッグイベント
+int PWS_EVENTCB_DND_DROP     = 1;      ///< ドロップイベント
+/* @} */
+
+/**
+ * @defgroup Input 入力関数
+ * @note     EditBox(W)
+ * @date     2006/08/09 EDITBOX_TYPE → INPUT_TYPE
+ * @{
+ */
+/// EditBox
+int PWS_INPUT_TYPE_NORMAL   = 0;       ///< 通常入力モード
+int PWS_INPUT_TYPE_PASSWORD = 1;       ///< パスワード入力モード
+/* @} */
+
+/**
+ * @defgroup BitmapHandle ビットマップハンドル関数
+ * @date 2006/07/24 追加
+ * @date 2006/11/26 名前変更
+ * @note なぜか逆
+ * @{
+ */
+int PWS_USE_ALPHA = 1;                 ///< αチャンネルなし
+int PWS_NO_ALPHA  = 0;                 ///< αチャンネルあり
+/* @} */
+
+/**
+ * @defgroup Graphic グラフィック関数
+ * @{
+ */
+/// 同期再生フラグ
+int PWS_ANIMATION_ASYNC = 0;           ///< バックグラウンドで処理
+int PWS_ANIMATION_SYNC  = 1;           ///< アニメーション処理の終了を待つ
+
+/// 表示エフェクト
+int PWS_EFFECT_NONE = 0;       ///< なし
+int PWS_EFFECT_ON   = 1;       ///< あり
+int PWS_EFFECT_USER = 2;       ///< ユーザの設定に従う
+
+/// 背景色透明化
+int PWS_TRANS_NONE = 0;        ///< なし
+int PWS_TRANS_ON   = 1;        ///< あり
+/* @} */
