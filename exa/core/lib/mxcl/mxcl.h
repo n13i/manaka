@@ -1,7 +1,7 @@
 // -*- aya -*-
 /**
  * @author  n13i <n13i@m2hq.net>
- * @version 0.1.2
+ * @version 0.1.3
  *
  * @date 2006/02/21 ì¬
  * @date 2006/02/22 prefix MXCL_ •t‰Á
@@ -12,6 +12,7 @@
  * @date 2006/07/25 ŠÖ”’Ç‰Á
  * @date 2006/11/25 ŠÖ”’Ç‰Á
  * @date 2006/12/10 ŠÖ”’Ç‰Á
+ * @date 2014/04/16 ŠÖ”’Ç‰Á
  *
  * @file
  *
@@ -30,5 +31,6 @@ int     MXCL_updatePsnFile();
 int     MXCL_checkUpdate(string feturl);
 string  MXCL_getFileContent(string filename);
 double  MXCL_getMoonAge(int time);
+int     MXCL_getMemberStates(string members[][], boolean only_online, boolean exclude_me);
 
 /* @} */

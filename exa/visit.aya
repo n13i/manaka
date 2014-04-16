@@ -224,7 +224,7 @@ int visit_selectMember(string &id, string &name)
     int sel;
     int talkwait = GetTalkWaitMode();
 
-    if(visit_getMemberStates(state, true) != -1)
+    if(MXCL_getMemberStates(state, true, false) > 0)
     {
         int i;
 
@@ -305,95 +305,95 @@ int visit_selectMember(string &id, string &name)
  * @static
  */
 
-int visit_getMemberStates(string members[][], boolean only_online)
-{
-    int n_members;
-    string members_id[];
-
-    emptyof members;
-
-    // メンバーリストに登録されているメンバーの ID を得る
-    if(L11GetFriends(members_id) != -1)
-    {
-        int i;
-
-        n_members = 0;
-        for(i = 0; i < lengthof members_id; i++)
-        {
-            int handle;
-
-            // メンバーの状態をサーバに問い合わせる
-            if(L11GetOnlineState(handle, members_id[i]) == 1)
-            {
-                int resp;
-
-                // 結果が返ってくるまで待つ
-                while((resp = L11WaitResponse(handle, 50)) == -24)
-                {
-                    Wait(0);
-                }
-
-                if(resp == 1)
-                {
-                    int state_type;
-                    string state_str;
-                    string name;
-
-                    L11GetResponseGetOnlineState(handle,
-                                                 state_type, state_str, name);
-
-                    if(!only_online || state_type == 4)
-                    {
-                        members[n_members][0] = members_id[i];
-                        members[n_members][1] = name;
-                        members[n_members][2] = itoa(state_type);
-                        members[n_members][3] = state_str;
-                        n_members++;
-                    }
-                }
-                else
-                {
-                    /**
-                     * -8 PIDで指定されたユーザーがいない
-                     * -13 handleが不正
-                     * -24 タイムアウト
-                     * -40 相手がオフラインだった
-                     */
-
-                    if(!only_online)
-                    {
-                        if(resp != -8)
-                        {
-                            members[n_members][0] = members_id[i];
-                            members[n_members][1] = members_id[i];
-                            members[n_members][2] = itoa(resp);
-                            members[n_members][3] = "不明("+itoa(resp)+")";
-                            n_members++;
-                        }
-                    }
-                }
-
-                // ハンドルを破棄
-                L11CloseHandle(handle);
-            }
-            else
-            {
-                if(!only_online)
-                {
-                    members[n_members][0] = members_id[i];
-                    members[n_members][1] = members_id[i];
-                    members[n_members][2] = "-255";
-                    members[n_members][3] = "状態取得失敗";
-                    n_members++;
-                }
-            }
-        }
-    }
-    else
-    {
-        // メンバーリストの取得に失敗
-        return -1;
-    }
-
-    return n_members;
-}
+//int visit_getMemberStates(string members[][], boolean only_online)
+//{
+//    int n_members;
+//    string members_id[];
+//
+//    emptyof members;
+//
+//    // メンバーリストに登録されているメンバーの ID を得る
+//    if(L11GetFriends(members_id) != -1)
+//    {
+//        int i;
+//
+//        n_members = 0;
+//        for(i = 0; i < lengthof members_id; i++)
+//        {
+//            int handle;
+//
+//            // メンバーの状態をサーバに問い合わせる
+//            if(L11GetOnlineState(handle, members_id[i]) == 1)
+//            {
+//                int resp;
+//
+//                // 結果が返ってくるまで待つ
+//                while((resp = L11WaitResponse(handle, 50)) == -24)
+//                {
+//                    Wait(0);
+//                }
+//
+//                if(resp == 1)
+//                {
+//                    int state_type;
+//                    string state_str;
+//                    string name;
+//
+//                    L11GetResponseGetOnlineState(handle,
+//                                                 state_type, state_str, name);
+//
+//                    if(!only_online || state_type == 4)
+//                    {
+//                        members[n_members][0] = members_id[i];
+//                        members[n_members][1] = name;
+//                        members[n_members][2] = itoa(state_type);
+//                        members[n_members][3] = state_str;
+//                        n_members++;
+//                    }
+//                }
+//                else
+//                {
+//                    /**
+//                     * -8 PIDで指定されたユーザーがいない
+//                     * -13 handleが不正
+//                     * -24 タイムアウト
+//                     * -40 相手がオフラインだった
+//                     */
+//
+//                    if(!only_online)
+//                    {
+//                        if(resp != -8)
+//                        {
+//                            members[n_members][0] = members_id[i];
+//                            members[n_members][1] = members_id[i];
+//                            members[n_members][2] = itoa(resp);
+//                            members[n_members][3] = "不明("+itoa(resp)+")";
+//                            n_members++;
+//                        }
+//                    }
+//                }
+//
+//                // ハンドルを破棄
+//                L11CloseHandle(handle);
+//            }
+//            else
+//            {
+//                if(!only_online)
+//                {
+//                    members[n_members][0] = members_id[i];
+//                    members[n_members][1] = members_id[i];
+//                    members[n_members][2] = "-255";
+//                    members[n_members][3] = "状態取得失敗";
+//                    n_members++;
+//                }
+//            }
+//        }
+//    }
+//    else
+//    {
+//        // メンバーリストの取得に失敗
+//        return -1;
+//    }
+//
+//    return n_members;
+//}

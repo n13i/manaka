@@ -1460,6 +1460,41 @@ void test_libMXCL()
         {
             Talk("\e" + ftoa(MXCL_getMoonAge(Time())) + "\p");
         }
+        AddItem("getMemberStates")
+        {
+            boolean only_online = false;
+            AddItem("only_online = true")
+            {
+                only_online = true;
+            }
+            AddItem("only_online = false")
+            {
+                only_online = false;
+            }
+            Choice;
+
+            boolean exclude_me = false;
+            AddItem("exclude_me = true")
+            {
+                exclude_me = true;
+            }
+            AddItem("exclude_me = false")
+            {
+                exclude_me = false;
+            }
+            Choice;
+
+            string members[][];
+            int n = MXCL_getMemberStates(members, only_online, exclude_me);
+
+            Talk("\egot " + itoa(n) + "\c\n");
+            int i;
+            for(i = 0; i < n; i++)
+            {
+                Talk(members[i][0] + "=" + members[i][1] + " (" + members[i][2] + "," + members[i][3] + ")\n");
+            }
+            Talk("\p");
+        }
         AddCancelItem
         {
             loop = false;
