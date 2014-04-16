@@ -8,7 +8,7 @@ string VERSION_DATE = "2014/04/11";
 
 void Version_setProfile()
 {
-	string profile = SPR_getText("CharacterProfile", "");
+    string profile = SPR_getText("CharacterProfile", "");
 
     string CRLF = StrDecodeURL("%0D%0A");
 
@@ -18,9 +18,9 @@ void Version_setProfile()
             VERSION_NUMBER + " Update " +
             VERSION_COUNT + " (" + VERSION_DATE + ")");
     PutProperty("VdConfig\\Profile",
-            StrReplace(profile, "\\n", CRLF) + CRLF +
             "Version " + VERSION_NUMBER + " Update " +
-            VERSION_COUNT + " (" + VERSION_DATE + ")" + CRLF +
-            "Powered by MX kernel 7");
+            VERSION_COUNT + " (" + VERSION_DATE + ") " +
+            "with MX kernel 7" + CRLF + CRLF +
+            StrReplace(profile, "\\n", CRLF));
 }
 
