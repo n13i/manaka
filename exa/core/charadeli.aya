@@ -30,7 +30,7 @@ int CHARADELI_STATUS_RETURNED = 4;
 
 string charadeli_to[];
 string charadeli_dataName[];
-string charadeli_sendMessageHeader[];
+string charadeli_sendMessageHeader[][];
 string charadeli_sendMessageBody[];
 string charadeli_replyMessageHeader[];
 string charadeli_replyMessageBody[];
@@ -53,12 +53,14 @@ int CharaDeli_newSession()
     {
         if(charadeli_status[i] == CHARADELI_STATUS_UNUSED)
         {
+            emptyof charadeli_sendMessageHeader[i];
             return i;
         }
     }
 
     // id_max == 0 もしくは未使用 id がない
     charadeli_status[id_max] = CHARADELI_STATUS_NOVISIT;
+    emptyof charadeli_sendMessageHeader[id_max];
     return id_max;
 }
 
@@ -166,6 +168,25 @@ void CharaDeli_setSendDataName(int sid, string dataname)
 }
 
 /**
+ * 送信するメッセージのヘッダを追加する
+ *
+ * @param[in] key
+ * @param[in] value
+ *
+ * @fixme 同じキーのヘッダを複数回追加した場合の動作
+ */
+void CharaDeli_addSendMessageHeader(int sid, string key, string value)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return;
+    }
+
+    int idx = lengthof charadeli_sendMessageHeader[sid];
+    charadeli_sendMessageHeader[sid][idx] = key + "=" + value;
+}
+
+/**
  * 送信するメッセージを指定する
  *
  * @param[in] message メッセージ
@@ -261,6 +282,18 @@ int CharaDeli_doVisit(int sid)
     Message_new();
     Message_setBody(charadeli_sendMessageBody[sid]);
     Message_addHeader("Name", name);
+    int i;
+    for(i = 0; i < lengthof charadeli_sendMessageHeader[sid]; i++)
+    {
+        string h = charadeli_sendMessageHeader[sid][i];
+
+        string key;
+        string value;
+        key = StrToken(h, "=", 0);
+        value = StrSubstring(h, StrLen(key)+1, StrLen(h)-1);
+
+        Message_addHeader(key, value);
+    }
 
     r = VisitTo(
         charadeli_to[sid],

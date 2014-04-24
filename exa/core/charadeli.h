@@ -13,6 +13,7 @@ int CharaDeli_editMessage(int sid);
 
 void CharaDeli_setSendTo(int sid, string to);
 void CharaDeli_setSendDataName(int sid, string dataname);
+void CharaDeli_addSendMessageHeader(int sid, string key, string value);
 void CharaDeli_setSendMessageBody(int sid, string message);
 
 int CharaDeli_ready(int sid);
