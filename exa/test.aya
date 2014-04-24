@@ -893,6 +893,10 @@ void test_ICComm()
             }
         }
     }
+    AddItem("受信済みメッセージを全てクリア")
+    {
+        ICComm_cleanupMessages();
+    }
     Choice;
 
     SetTalkWaitMode(waitmode);

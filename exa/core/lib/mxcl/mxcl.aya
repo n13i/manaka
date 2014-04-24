@@ -64,6 +64,8 @@
  *
  * @date       2006/02/21 作成
  * @date       2006/03/05 関数名変更
+ *
+ * @note キャラデリ先では使用不可(EAccessViolation/EPrivilege)
  */
 int MXCL_getOwnVendorAndType(string& vendor, string& type)
 {
