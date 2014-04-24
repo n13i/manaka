@@ -15,3 +15,5 @@ void    Prop_setLastBootTime(int time);
 int     Prop_getLastBootTime();
 void    Prop_setShutdownTime(int time);
 int     Prop_getShutdownTime();
+void    Prop_setAutoPsnUpdateEnabled(boolean enable);
+boolean Prop_getAutoPsnUpdateEnabled();

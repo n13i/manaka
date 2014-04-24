@@ -154,3 +154,36 @@ int Prop_getShutdownTime()
     return atoi(time);
 }
 
+void Prop_setAutoPsnUpdateEnabled(boolean enable)
+{
+    prop_setBoolean("AutoPSNUpdate", enable);
+}
+boolean Prop_getAutoPsnUpdateEnabled()
+{
+    return prop_getBoolean("AutoPSNUpdate", true);
+}
+
+void prop_setBoolean(string key, boolean boolvalue)
+{
+    if(boolvalue)
+    {
+        PutProperty(PROP_ROOT + "\\" + key, "1");
+    }
+    else
+    {
+        PutProperty(PROP_ROOT + "\\" + key, "0");
+    }
+}
+boolean prop_getBoolean(string key, boolean defvalue)
+{
+    boolean ret = defvalue;
+    string p = GetProperty(PROP_ROOT + "\\" + key);
+    if(p != NULL && p != "")
+    {
+        if(p == "0") { ret = false; }
+        else { ret = true; }
+    }
+
+    return ret;
+}
+
