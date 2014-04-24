@@ -1,0 +1,317 @@
+/**
+ * Multiple-Stage Character Delivery
+ */
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "core/lib/mxcl/mxcl.h"
+#import "core/lib/mxcl/pwsconst.h"
+#import "core/iccomm.h"
+#import "core/message.h"
+#import "core/surface.h"
+#import "core/msgbox.h"
+#import "core/sprict_ict.h"
+#import "core/charadeli.h"
+#import "properties.h"
+#import "test.h"
+
+
+string visitor_from = "";
+string visitor_frompsn = "";
+string visitor_message = "";
+string visitor_reply = "";
+int    visitor_time = 0;
+string visitor_root = "";
+string visitor_rootpsn = "";
+
+boolean visitor_nextStageSent = false;
+boolean visitor_nextStageConfirmed = false;
+
+int visit_sid = -1;
+
+// 自分の型名 前段から教えてもらい，後段に伝える
+string my_psn = "";
+
+/**
+ * キャラデリ送信先での起動
+ *
+ * @param[in] from キャラデリ元PID
+ * @param[in] message キャラデリ元で設定したメッセージ
+ */
+void VisitorStartUp(string from, string message)
+{
+    Prop_deletePrivateTree();
+    DelPropertyTree("MXkernel");
+    SaveProperty();
+
+    visitor_from = from;
+    visitor_message = message;
+    visitor_time = Time();
+
+    MakeFolder("local");
+    ICComm_cleanupMessages();
+    Surface_init();
+    ICT_init();
+    //Test_init();
+
+
+    MakePropertyTree("Visit");
+    if(GetProperty("Visit\\CurrentChain") == NULL)
+    {
+        PutProperty("Visit\\CurrentChain", "1");
+    }
+    if(GetProperty("Visit\\ChainUsers") == NULL)
+    {
+        PutProperty("Visit\\ChainUsers", StrEncodeURL(visitor_from));
+    }
+    PutProperty("Visit\\ChainUsers",
+            GetProperty("Visit\\ChainUsers") + "," + StrEncodeURL(L11GetPID()));
+
+
+    MsgBox_setStyle("default");
+    MsgBox_setSize(16, 6);
+    Surface_load("img\\surface");
+
+    Surface_setTargetWindow(PWS_WINNAME_MAIN);
+    Surface_showImageSet("000");
+    Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+
+    // メッセージのヘッダから前段のキャラデリ元の型名と発信元PIDを得る
+    // FIXME プロパティに保存しておけばいいのでは？
+    Message_newFromString(message);
+    visitor_root = Message_getHeader("MSCD-Root");
+    visitor_rootpsn = Message_getHeader("MSCD-RootPSN");
+    visitor_frompsn = Message_getHeader("MSCD-FromPSN");
+
+    // 前段のキャラデリ元キャラクタに通知
+    if(ICComm_sendMessage(visitor_from, visitor_frompsn, "MSCD/1.0 StartUp", ICCOMM_SEND_SYNC) != 1)
+    {
+        // メッセージ送信失敗
+    }
+
+    // 自分の型名はキャラデリ元からのメッセージ受信で判明する
+
+    ICT_setExternalVariable("sender", visitor_from);
+    ICT_runScript("\eおじゃましまーす。\w\n" +
+            "暇だったので{%sender}のところから勝手に遊びにきましたー。\n");
+
+    ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 CurrentChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
+}
+
+string VisitorShutDown()
+{
+    ICT_runScript("\eそれでは。");
+    Wait(3000);
+    return "※このエラーメッセージはキャラクタ「愛佳」(NH-MXPJ-01R)の「多段キャラデリ」機能によるメッセージです。無視してください。";
+}
+
+/**
+ * キャラクタ間通信新着メッセージのチェック
+ */
+action visitor_checkNewICCommMessage@(Second() % 2 == 1)
+{
+    string messages[][];
+    ICComm_getMatchingMessages("/.*/", "/.*/", "/^MSCD\\/1\\.0 /", messages);
+
+    int i;
+    for(i = 0; i < lengthof messages; i++)
+    {
+        int time = atoi(messages[i][0]);
+        string pid = messages[i][1];
+        string psn = messages[i][2];
+        string msg = messages[i][3];
+        if(psn == visitor_frompsn && StrToken(msg, " ", 1) == "StartUpAck")
+        {
+            // 前段のキャラデリ元からの通知を受ける
+            my_psn = StrToken(msg, " ", 2);
+        }
+
+        if(StrToken(msg, " ", 1) == "StartUp")
+        {
+            // 後段のキャラデリ先から起動通知を受けたら
+            // メッセージ送信元キャラクタ型番を返送する
+            ICComm_sendMessage(pid, psn, "MSCD/1.0 StartUpAck " + psn, ICCOMM_SEND_SYNC);
+            // ExitPersona();するためのフラグを立てる
+            visitor_nextStageConfirmed = true;
+        }
+
+        // 読んだメッセージは消す
+        ICComm_deleteMessage(time);
+    }
+}
+
+action MouseUpL@(false)
+{
+    ICT_runScript("\eは{(ー|)}い、{(お呼びです|呼びました)}か{(ー|)}？\n\n");
+
+    AddItem("何だ君は")
+    {
+        ICT_runScript("\e\a(http://mxpj.net/r/NH-MXPJ-01R)愛佳\_aといいます。\c\n" +
+                "「勝手にキャラデリ」と「多段キャラデリ」の2つの機能の実験でやってきましたー。\n\n");
+        AddItem("勝手にキャラデリって？")
+        {
+            ICT_runScript("\e暇なときに、メンバーリストにいる誰かのところに勝手に訪問する機能です。\c\n" +
+                "まあ、\s来たところで特にすることもないんですが、今のところは。\n");
+        }
+        AddItem("多段キャラデリって？")
+        {
+            ICT_runScript("\e訪問先から、さらにメンバーリストをたどって誰かのところに訪問する機能です。\c\n" +
+                "開発中なのでいろいろご迷惑をおかけするかもしれませんが、よろしくお願いします。\c\n");
+            if(GetProperty("Visit\\EnableMultiStageCharaDeli") == "1")
+            {
+                ICT_runScript("現在、多段キャラデリ機能は[有効]です。\s着いてから5分経つと次の方のところに行きます。\n");
+            }
+            else
+            {
+                ICT_runScript("現在、多段キャラデリ機能は[無効]です。\sしばらくしたら帰ります。\n");
+            }
+        }
+        AddItem("そうですか")
+        {
+            ICT_runScript("\eそうなんですよー。\n");
+        }
+        Choice;
+    }
+    AddItem("なんでもない")
+    {
+        ICT_runScript("\eそうですかー。\n");
+    }
+    AddCancelItem
+    {
+        Talk("\e");
+        HideMsgBox();
+    }
+    Choice;
+}
+
+//action visit_go@(Second() % 2 == 1 && CharaDeli_isReady(visit_sid))
+//{
+//    CharaDeli_doVisit(visit_sid);
+//}
+
+boolean visitor_isTimeOut()
+{
+    int timeout_second = 0;
+    string timeout = GetProperty("Visit\\TimeOut");
+    if(timeout == NULL || GetProperty("Visit\\EnableMultiStageCharaDeli") == "1")
+    {
+        // 多段キャラデリ有効時はタイムアウト設定値によらず5分で次へ
+        PutProperty("Visit\\TimeOut", "5");
+        timeout = "5";
+    }
+
+    timeout_second = atoi(timeout) * 60;
+
+    if(Time() > visitor_time + timeout_second)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+Critical action visitor_checkTimeOut@(visitor_isTimeOut())
+{
+    string next_pid = visitor_getNextStagePID();
+
+    int n_chain = -1;
+    string chain = GetProperty("Visit\\CurrentChain");
+    if(chain != "" && chain != NULL)
+    {
+        n_chain = atoi(chain);
+    }
+
+    if(next_pid == "" ||
+            my_psn == "" ||
+            GetProperty("Visit\\EnableMultiStageCharaDeli") != "1" ||
+            n_chain >= 5)
+    {
+        // 通信NGなどで自分の型名が不明の場合，
+        // 後段からの通信を受けることができないので
+        // ここでチェイン終了
+
+        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 FinalChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
+
+        ICT_runScript("\eさて、\sそろそろ帰りますねー。");
+        Wait(5000);
+        ExitPersona();
+    }
+    else
+    {
+        ICT_runScript("\eさて、\sそれじゃ次いきますねー。");
+        Wait(5000);
+
+        PutProperty("Visit\\CurrentChain", itoa(n_chain + 1));
+
+        // 後段をキャラデリ準備
+        // タイムアップした場合のみ行う
+        visit_sid = CharaDeli_newSession();
+        CharaDeli_setSendDataName(visit_sid, "etc\\visitor_chain");
+        //CharaDeli_setSendTo(visit_sid, "naoh128"); // TODO
+        CharaDeli_setSendTo(visit_sid, next_pid);
+        CharaDeli_addSendMessageHeader(visit_sid, "MSCD-FromPSN", my_psn);
+        CharaDeli_addSendMessageHeader(visit_sid, "MSCD-RootPSN", visitor_rootpsn);
+        CharaDeli_addSendMessageHeader(visit_sid, "MSCD-Root", visitor_root);
+        CharaDeli_setSendMessageBody(visit_sid, "これはキャラクタ「愛佳」(NH-MXPJ-01R)の多段キャラデリ制御用メッセージであり、キャラクタが自動的に送信したものです。");
+        CharaDeli_ready(visit_sid);
+        CharaDeli_doVisit(visit_sid);
+
+        visitor_nextStageSent = true;
+    }
+}
+
+/**
+ * 後段送信後，後段からのメッセージが確認できたら終了する
+ */
+Critical action visitor_checkNextStageConfirmed@(Second() % 2 == 1 && visitor_nextStageSent && visitor_nextStageConfirmed)
+{
+    ExitPersona();
+}
+
+string visitor_getNextStagePID()
+{
+    string state[][];
+    string cand_pids[];
+    if(MXCL_getMemberStates(state, true, true) > 0)
+    {
+        string chained_pid;
+        int j;
+        for(j = 0; (chained_pid = StrToken(GetProperty("Visit\\ChainUsers"), ",", j)) != NULL; j++)
+        {
+            chained_pid = StrDecodeURL(chained_pid);
+
+            int i;
+            for(i = 0; i < lengthof state; i++)
+            {
+                if(state[i][0] == chained_pid)
+                {
+                    state[i][0] = "";
+                }
+            }
+        }
+
+        int i;
+        int idx = 0;
+        for(i = 0; i < lengthof state; i++)
+        {
+            if(state[i][0] != "")
+            {
+                cand_pids[idx] = state[i][0];
+                idx++;
+            }
+        }
+    }
+    else
+    {
+        return "";
+    }
+
+    if((lengthof cand_pids) <= 0)
+    {
+        return "";
+    }
+
+    int target_pid_idx = Random(lengthof cand_pids);
+    return cand_pids[target_pid_idx];
+}
+

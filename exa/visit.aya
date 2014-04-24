@@ -23,11 +23,14 @@
 #import "core/debug.h"
 #import "core/charadeli.h"
 #import "core/msgbox.h"
+#import "core/iccomm.h"
 
 
 string VISIT_PROP = "Visit";
 
 int visit_sid = -1;
+int visit_auto_sid = -1;
+boolean visit_autoCharaDeliTrigger = false;
 
 /**
  * 訪問準備が完了しているなら訪問処理を行う
@@ -46,6 +49,23 @@ action visit_go@(Second() % 2 == 1 && CharaDeli_isReady(visit_sid))
     }
 }
 
+action visit_auto_prepare@(Second() % 2 == 1 && visit_autoCharaDeliTrigger)
+{
+    visit_autoCharaDeliTrigger = false;
+    visit_prepareAutoCharaDeli();
+}
+
+action visit_auto_go@(Second() % 2 == 1 && CharaDeli_isReady(visit_auto_sid))
+{
+    Debug(DEBUG_LV_TRACE, "Visit", "exec visit auto");
+
+    if(CharaDeli_doVisit(visit_auto_sid) != 1)
+    {
+        // fail
+        // サインイン済みでも自分の状態がオフラインだと失敗する？
+    }
+}
+
 action visit_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_sid))
 {
     Debug(DEBUG_LV_TRACE, "Visit", "return visit");
@@ -54,12 +74,40 @@ action visit_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_sid))
     CharaDeli_showReplyMessage(visit_sid);
 }
 
+action visit_auto_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_auto_sid))
+{
+    Debug(DEBUG_LV_TRACE, "Visit", "return visit auto");
+}
+
+/**
+ * 訪問先からのキャラクタ間通信メッセージのチェック
+ */
+action visit_checkMessage@(Second() % 2 == 1)
+{
+    string messages[][];
+    int count = ICComm_getMatchingMessages("/.*/", "/.*/", "/^MSCD\\/1\\.0 StartUp/", messages);
+    int i;
+    for(i = 0; i < count; i++)
+    {
+        int time = atoi(messages[i][0]);
+        string pid = messages[i][1];
+        string psn = messages[i][2];
+        string msg = messages[i][3];
+
+        ICComm_sendMessage(pid, psn, "MSCD/1.0 StartUpAck " + psn, ICCOMM_SEND_SYNC);
+        ICComm_deleteMessage(time);
+    }
+}
+
 void Visit_init()
 {
     MakePropertyTree(VISIT_PROP);
 
     visit_sid = CharaDeli_newSession();
     CharaDeli_setSendDataName(visit_sid, "etc\\visitor");
+
+    visit_auto_sid = CharaDeli_newSession();
+    CharaDeli_setSendDataName(visit_auto_sid, "etc\\visitor_chain");
 
     if(GetProperty(VISIT_PROP + "\\TimeOut") == NULL)
     {
@@ -115,13 +163,20 @@ void Visit_menu()
                 }
             }
         }
-        // 最後に受け取ったキャラデリの返信を表示
+        // TODO 最後に受け取ったキャラデリの返信を表示
         /*
         AddItem(SPR_getText("Visit_menu", "showOfferDir"))
         {
             SPR_run("Visit", "showOfferDir");
         }
         */
+        AddItem(SPR_getText("Visit_menu", "autoCharaDeli"))
+        {
+            if(visit_autoCharaDeliMenu())
+            {
+                loop = false;
+            }
+        }
         AddItem(SPR_getText("Visit_menu", "config"))
         {
             Visit_preference();
@@ -138,9 +193,17 @@ void Visit_menu()
         }
         Choice;
 
+        // 通常のメッセージあり訪問
         if(send_to_id != NULL && send_to_id != "")
         {
+            //string vendor;
+            //string type;
+            //MXCL_getOwnVendorAndType(vendor, type);
+
             CharaDeli_setSendTo(visit_sid, send_to_id);
+            // --- debug
+            //CharaDeli_addSendMessageHeader(visit_sid, "MSCD-FromPSN", vendor + "-" + type);
+            // --- debug
             CharaDeli_setSendMessageBody(
                 visit_sid,
                 "メッセージを入力してください");
@@ -163,7 +226,19 @@ void Visit_preference()
         pref, -1, VISIT_PROP + "\\TimeOut", UI_PREF_TYPE_SELECT,
         "タイムアウト",
         SPR_getText("Visit_help", "timeout"),
-        "0=なし,5=5分,10=10分,20=20分,30=30分,45=45分,60=1時間", "");
+        "5=5分,10=10分,20=20分", "");
+
+    UI_prefCreateItem(
+        pref, -1, VISIT_PROP + "\\EnableAutoCharaDeli", UI_PREF_TYPE_CHECKBOX,
+        "暇なとき勝手に出かけていいよ",
+        SPR_getText("Visit_help", "enableAutoCharaDeli"),
+        "0,1", "");
+
+    UI_prefCreateItem(
+        pref, -1, VISIT_PROP + "\\EnableMultiStageCharaDeli", UI_PREF_TYPE_CHECKBOX,
+        "多段キャラデリを許可する",
+        SPR_getText("Visit_help", "enableMultiStageCharaDeli"),
+        "0,1", "");
 
     if(UI_prefDialog("キャラデリの設定", pref, result) == 1)
     {
@@ -286,114 +361,86 @@ int visit_selectMember(string &id, string &name)
     return 0;
 }
 
-/**
- * メンバーの状態を得る
- *
- * @param[out] members     メンバーの状態を格納する可変長配列
- * @param[in]  only_online オンラインのメンバーの情報のみ取得するかどうか
- *
- * @retval -1       メンバーリストの取得に失敗
- * @retval それ以外 状態取得したメンバーの数
- *
- * @note
- *   members[][0] : メンバーの Chararina ID
- *   members[][1] : メンバーの表示名
- *   members[][2] : メンバーの状態 (番号)
- *   members[][3] : メンバーの状態 (文字列)
- *
- * @date 2006/10/30
- * @static
- */
+boolean visit_autoCharaDeliMenu()
+{
+    if(GetProperty(VISIT_PROP + "\\AutoCharaDeli_AckStatement") != "1")
+    {
+        SPR_run("Visit_help", "autoCharaDeliStatement");
+        PutProperty(VISIT_PROP + "\\AutoCharaDeli_AckStatement", "1");
+    }
 
-//int visit_getMemberStates(string members[][], boolean only_online)
-//{
-//    int n_members;
-//    string members_id[];
-//
-//    emptyof members;
-//
-//    // メンバーリストに登録されているメンバーの ID を得る
-//    if(L11GetFriends(members_id) != -1)
-//    {
-//        int i;
-//
-//        n_members = 0;
-//        for(i = 0; i < lengthof members_id; i++)
-//        {
-//            int handle;
-//
-//            // メンバーの状態をサーバに問い合わせる
-//            if(L11GetOnlineState(handle, members_id[i]) == 1)
-//            {
-//                int resp;
-//
-//                // 結果が返ってくるまで待つ
-//                while((resp = L11WaitResponse(handle, 50)) == -24)
-//                {
-//                    Wait(0);
-//                }
-//
-//                if(resp == 1)
-//                {
-//                    int state_type;
-//                    string state_str;
-//                    string name;
-//
-//                    L11GetResponseGetOnlineState(handle,
-//                                                 state_type, state_str, name);
-//
-//                    if(!only_online || state_type == 4)
-//                    {
-//                        members[n_members][0] = members_id[i];
-//                        members[n_members][1] = name;
-//                        members[n_members][2] = itoa(state_type);
-//                        members[n_members][3] = state_str;
-//                        n_members++;
-//                    }
-//                }
-//                else
-//                {
-//                    /**
-//                     * -8 PIDで指定されたユーザーがいない
-//                     * -13 handleが不正
-//                     * -24 タイムアウト
-//                     * -40 相手がオフラインだった
-//                     */
-//
-//                    if(!only_online)
-//                    {
-//                        if(resp != -8)
-//                        {
-//                            members[n_members][0] = members_id[i];
-//                            members[n_members][1] = members_id[i];
-//                            members[n_members][2] = itoa(resp);
-//                            members[n_members][3] = "不明("+itoa(resp)+")";
-//                            n_members++;
-//                        }
-//                    }
-//                }
-//
-//                // ハンドルを破棄
-//                L11CloseHandle(handle);
-//            }
-//            else
-//            {
-//                if(!only_online)
-//                {
-//                    members[n_members][0] = members_id[i];
-//                    members[n_members][1] = members_id[i];
-//                    members[n_members][2] = "-255";
-//                    members[n_members][3] = "状態取得失敗";
-//                    n_members++;
-//                }
-//            }
-//        }
-//    }
-//    else
-//    {
-//        // メンバーリストの取得に失敗
-//        return -1;
-//    }
-//
-//    return n_members;
-//}
+    boolean loop = true;
+    boolean break_menu = false;
+
+    while(loop)
+    {
+        SPR_run("Visit", "autoCharaDeli");
+
+        AddItem(SPR_getText("Selection", "yes"))
+        {
+            if(visit_isSignedIn())
+            {
+                SPR_run("Visit", "go");
+
+                loop = false;
+                break_menu = true;
+                // 勝手に訪問トリガを立てる
+                visit_autoCharaDeliTrigger = true;
+            }
+        }
+        AddItem(SPR_getText("Selection", "no"))
+        {
+            loop = false;
+        }
+        AddItem(SPR_getText("Visit_menu", "autoCharaDeliHelp"))
+        {
+            SPR_run("Visit_help", "autoCharaDeliStatement");
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
+    }
+
+    return break_menu;
+}
+
+void visit_prepareAutoCharaDeli()
+{
+    string state[][];
+
+    if(MXCL_getMemberStates(state, true, true) > 0)
+    {
+        int idx = Random(lengthof state);
+        string pid = state[idx][0];
+        string name = state[idx][1];
+
+        Debug(DEBUG_LV_DEBUG, "Visit", "prepareAutoCharaDeli: target pid=" + pid + ", name=" + name);
+
+        string vendor;
+        string type;
+        MXCL_getOwnVendorAndType(vendor, type);
+
+        CharaDeli_setSendTo(visit_auto_sid, pid);
+        CharaDeli_addSendMessageHeader(visit_auto_sid,
+                "MSCD-FromPSN", vendor + "-" + type);
+        CharaDeli_addSendMessageHeader(visit_auto_sid,
+                "MSCD-RootPSN", vendor + "-" + type);
+        CharaDeli_addSendMessageHeader(visit_auto_sid,
+                "MSCD-Root", L11GetPID());
+        CharaDeli_setSendMessageBody(
+                visit_auto_sid,
+                "これはキャラクタ「愛佳」(NH-MXPJ-01R)の「勝手にキャラデリ」制御用メッセージであり、キャラクタが自動的に送信したものです。");
+        CharaDeli_ready(visit_auto_sid);
+    }
+}
+
+void Visit_triggerAutoVisit()
+{
+    if(GetProperty(VISIT_PROP + "\\EnableAutoCharaDeli") == "1")
+    {
+        visit_autoCharaDeliTrigger = true;
+    }
+}
+

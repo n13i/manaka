@@ -16,12 +16,23 @@
 #import "mi.h"
 #import "properties.h"
 
+int lclick_lastClickedTime = 2147400000; // TODO 起動時刻で初期化したい
+int lclick_lastUnbusyTime = 0;
+
+action lclick_unbusy@(Second() % 2 == 1 && Time() >= lclick_lastClickedTime + 900 && Time() >= lclick_lastUnbusyTime + 3600)
+{
+    Visit_triggerAutoVisit();
+    lclick_lastUnbusyTime = Time();
+}
+
 action MouseUpL@(false)
 {
+    lclick_lastClickedTime = Time();
+
     string mi_question;
     mi_question = MI_getOneQuestion();
 
-    MsgBox_setSize(16, 6);
+    MsgBox_setSize(16, 7);
 
     Talk("\e");
     SPR_run("Reaction", "called");
@@ -50,6 +61,11 @@ action MouseUpL@(false)
             {
                 loop = false;
                 MI_answer(mi_question);
+            }
+            AddItem(SPR_getText("Menu", "cancel"))
+            {
+                loop = false;
+                SPR_run("Reaction", "canceled");
             }
             AddCancelItem
             {
@@ -91,6 +107,10 @@ action MouseUpL@(false)
             AddItem("")
             {
             }
+            AddItem(SPR_getText("Menu", "back"))
+            {
+                page = 0;
+            }
             AddCancelItem
             {
                 page = 0;
@@ -111,6 +131,10 @@ action MouseUpL@(false)
             }
             AddItem("")
             {
+            }
+            AddItem(SPR_getText("Menu", "back"))
+            {
+                page = 0;
             }
             AddCancelItem
             {
@@ -139,18 +163,13 @@ void Main_configMenu()
             {
                 Main_pref_userName();
             }
-            /*
-            AddItem(ICON_FOLDER + " ふるまい")
+            AddItem(ICON_FOLDER + " 愛佳の更新")
             {
-                Main_preference();
+                Main_pref_update();
             }
-            */
             AddItem(ICON_FOLDER + " 各機能の設定")
             {
                 page = 1;
-            }
-            AddItem("")
-            {
             }
             AddItem("")
             {
@@ -322,6 +341,38 @@ void Main_pref_userName()
     {
         SPR_run("Preference", "UserName_Unchanged");
     }
+}
+
+void Main_pref_update()
+{
+    string pref[][];
+    string result[];
+
+    UI_prefCreateItem(pref, -1, "Private\\AutoPSNUpdate", UI_PREF_TYPE_CHECKBOX,
+                      "PSNファイルを自動更新する",
+                      "キャラクターの更新成功時に、新しいPSNファイルを自動的にコピーします。",
+                      "0,1", bool_to_string(Prop_getAutoPsnUpdateEnabled()));
+
+    MsgBox_pushSize();
+    MsgBox_setSize(-1, 12);
+    if(UI_prefDialog("愛佳の更新", pref, result) == 1)
+    {
+        int i;
+        for(i = 0; i < lengthof result; i++)
+        {
+            string id = UI_prefGetID(pref, i);
+            if(id != "")
+            {
+                PutProperty(id, result[i]);
+            }
+        }
+    }
+    MsgBox_popSize();
+}
+
+string bool_to_string(boolean b)
+{
+    if(b) { return "1"; } else { return "0"; }
 }
 
 action ShutDown@(false)
