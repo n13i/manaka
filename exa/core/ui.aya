@@ -414,7 +414,7 @@ void UI_prefCreateItem(string pref[][], int index, string id,
     pref[index][2] = descr;
     pref[index][3] = options;
 
-    if(StrSearch(id, "\\") == 1)
+    if((defvalue == "" || defvalue == NULL) && StrSearch(id, "\\") == 1)
     {
         defvalue = GetProperty(id);
     }
