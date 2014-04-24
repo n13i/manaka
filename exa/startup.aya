@@ -85,9 +85,12 @@ action ScriptUpdated@(false)
         PutProperty("LastUpdatedVersionCount", VERSION_COUNT);
 
         // PSNファイルのアップデートをついでにやっとく
-        int psn = MXCL_updatePsnFile();
-        Debug(DEBUG_LV_TRACE, "StartUp",
-            "PSN file update result = " + itoa(psn));
+        if(Prop_getAutoPsnUpdateEnabled())
+        {
+            int psn = MXCL_updatePsnFile();
+            Debug(DEBUG_LV_TRACE, "StartUp",
+                "PSN file update result = " + itoa(psn));
+        }
     }
 }
 
@@ -121,7 +124,7 @@ void startup_common()
     // ----------------------------------------------------------------------
     Surface_load("img\\surface");
     MsgBox_setStyle("default");
-    MsgBox_setSize(16, 6);
+    MsgBox_setSize(16, 7);
 
     //Debug(DEBUG_LV_TRACE, "StartUp",
     //      "Boot_StartUpMode = " + GetProperty("Boot_StartUpMode"));
