@@ -217,8 +217,8 @@ int ICComm_enumMessageReceivedTime(int count)
  */
 int ICComm_getMatchingMessages(string pid_pattern, string persona_pattern, string message_pattern, string messages[][])
 {
-    Debug(DEBUG_LV_TRACE, "ICComm_getMatchingMessages",
-            "pid_pattern=" + pid_pattern + ", persona_pattern=" + persona_pattern + ", message_pattern=" + message_pattern);
+    //Debug(DEBUG_LV_TRACE, "ICComm_getMatchingMessages",
+    //        "pid_pattern=" + pid_pattern + ", persona_pattern=" + persona_pattern + ", message_pattern=" + message_pattern);
 
     int time_key;
     int count = 0;
