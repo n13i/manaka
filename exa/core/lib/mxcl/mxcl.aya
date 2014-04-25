@@ -530,7 +530,12 @@ int MXCL_checkUpdate(string feturl)
         return -1;
     }
 
-    feturl += "/index.fet";
+    if(feturl == "")
+    {
+        feturl = GetProperty("..\\System\\SysConfig\\Fetch\\MirrorURL");
+    }
+
+    feturl += "index.fet";
     remote_fet = GetHTTP(feturl, "", PWS_NETWORK_METHOD_GET, 30000);
     if(GetProperty("..\\System\\HttpResult") != "0")
     {
