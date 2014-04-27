@@ -34,6 +34,8 @@ int ict_getStatements(string str, string cmds[]);
 //#import "migration.h"
 //#import "version.h"
 #import "properties.h"
+#import "altwindow.h"
+
 
 
 import int LF_BIFF_OpenConfigDialog();
@@ -294,6 +296,18 @@ void Test_menu()
                         L11CloseHandle(handle);
                     }
                 }
+            }
+            AddItem("キャラデリ中代替ウィンドウ")
+            {
+                AddItem("init")
+                {
+                    AltWindow_init();
+                }
+                AddItem("destroy")
+                {
+                    AltWindow_destroy();
+                }
+                Choice;
             }
             AddCancelItem
             {
