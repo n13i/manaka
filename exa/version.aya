@@ -2,9 +2,9 @@
 #import "prototype200.aya"
 #import "core/sprict_spr.h"
 
-string VERSION_COUNT = "4";
+string VERSION_COUNT = "5";
 string VERSION_NUMBER = "5.00";
-string VERSION_DATE = "2014/04/25";
+string VERSION_DATE = "2014/04/28";
 
 void Version_setProfile()
 {
