@@ -1,0 +1,110 @@
+/**
+ * キャラデリ中代替ウィンドウ
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/surface.h"
+#import "core/msgbox.h"
+#import "core/lib/mxcl/mxcl.h"
+#import "core/lib/mxcl/pwsconst.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+#import "visit.h"
+
+string ALTWINDOW_NAME = "alt";
+
+void AltWindow_init()
+{
+    if(!IsPersonaWindowExists(ALTWINDOW_NAME))
+    {
+        // 親Windowは指定しない(NULL)
+        CreatePersonaWindow(ALTWINDOW_NAME, NULL);
+        RegisterMouseUpFunction(ALTWINDOW_NAME, PWS_EVENTCB_BUTTON_LEFT, PWS_CB_NORMAL, altwindow_MouseUpL);
+    }
+
+    // メインが画面左側に居る場合
+    int mainwin_x = GetPersonaPositionX();
+    int mainwin_w = GetWindowWidth(PWS_WINDOW_MAIN);
+    if(mainwin_x < 480)
+    {
+        // メインの右側に移動
+        // メイン画像左端+幅80%分
+        SetPersonaPositionXW(ALTWINDOW_NAME, mainwin_x + mainwin_w * 4 / 5);
+    }
+    else
+    {
+        // メインの左側に移動
+        // メイン画像左端+幅20%分
+        SetPersonaPositionXW(ALTWINDOW_NAME, mainwin_x + mainwin_w * 1 / 5);
+    }
+
+    Surface_setTargetWindow(ALTWINDOW_NAME);
+    Surface_showImageSet("100");
+    ReflectConfigW(ALTWINDOW_NAME);
+    // 制御をメインウィンドウに戻しておく
+    Surface_setTargetWindow(PWS_WINNAME_MAIN);
+
+    MsgBox_setStyleW(ALTWINDOW_NAME, "default");
+    MsgBox_setSizeW(ALTWINDOW_NAME, 16, 5);
+}
+
+void AltWindow_destroy()
+{
+    if(IsPersonaWindowExists(ALTWINDOW_NAME))
+    {
+        UnregisterMouseUpFunction(ALTWINDOW_NAME, PWS_EVENTCB_BUTTON_LEFT);
+        DestroyPersonaWindow(ALTWINDOW_NAME);
+    }
+}
+
+void altwindow_MouseUpL(string winname, int x, int y, string posinfname)
+{
+    string pid = Visit_getCurrentVisitingPID();
+    string name = MXCL_getMemberNameFromPID(pid);
+    if(name != pid)
+    {
+        name = name + "(" + pid + ")";
+    }
+
+    ICT_setExternalVariable("altwindow_currentpid", name);
+    ICT_setExternalVariable("altwindow_currentchain", itoa(Visit_getCurrentChainCount()));
+    SPR_run("Visit", "visitingInfo");
+
+    string w = AddItemGetWindow();
+    AddItemSetWindow(ALTWINDOW_NAME);
+
+    AddItem("愛佳を強制的に呼び戻す")
+    {
+        SPR_run("Visit", "forceReturnConfirm");
+        AddItem("はい")
+        {
+            Visit_forceReturn();
+        }
+        AddItem("いいえ")
+        {
+            TalkW(ALTWINDOW_NAME, "\e");
+            HideMsgBoxW(ALTWINDOW_NAME);
+        }
+        AddCancelItem
+        {
+            TalkW(ALTWINDOW_NAME, "\e");
+            HideMsgBoxW(ALTWINDOW_NAME);
+        }
+        Choice;
+    }
+    AddItem("そうですか")
+    {
+        TalkW(ALTWINDOW_NAME, "\e");
+        HideMsgBoxW(ALTWINDOW_NAME);
+    }
+    AddCancelItem
+    {
+        TalkW(ALTWINDOW_NAME, "\e");
+        HideMsgBoxW(ALTWINDOW_NAME);
+    }
+    Choice;
+
+    AddItemSetWindow(w);
+}
+
