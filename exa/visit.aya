@@ -24,13 +24,110 @@
 #import "core/charadeli.h"
 #import "core/msgbox.h"
 #import "core/iccomm.h"
+#import "core/surface.h"
+#import "altwindow.h"
 
 
 string VISIT_PROP = "Visit";
+string VISIT_PROP_VISITING = "Visit\\Visiting";
+string VISIT_PROP_CURRENTCHAIN = "Visit\\CurrentChain";
+string VISIT_PROP_LASTCHAINPID = "Visit\\LastChainPID";
 
 int visit_sid = -1;
 int visit_auto_sid = -1;
 boolean visit_autoCharaDeliTrigger = false;
+boolean visit_autoCharaDeliReturned = false;
+
+/**
+ * 訪問中かどうか
+ */
+boolean Visit_isVisiting()
+{
+    return (GetProperty(VISIT_PROP_VISITING) == "1");
+}
+
+/**
+ * 現在のチェイン数を返す。
+ *
+ * @retval -1 チェインモードではない
+ */
+int Visit_getCurrentChainCount()
+{
+    if(CharaDeli_getStatus(visit_auto_sid) != CHARADELI_STATUS_VISITING)
+    {
+        return -1;
+    }
+
+    string c = GetProperty(VISIT_PROP_CURRENTCHAIN);
+    if(c == NULL || c == "")
+    {
+        return -1;
+    }
+
+    return atoi(c);
+}
+
+/**
+ * 現在の訪問先ユーザのPIDを返す。
+ */
+string Visit_getCurrentVisitingPID()
+{
+    string pid = "";
+
+    if(CharaDeli_getStatus(visit_auto_sid) == CHARADELI_STATUS_VISITING)
+    {
+        pid = GetProperty(VISIT_PROP_LASTCHAINPID);
+    }
+    else if(CharaDeli_getStatus(visit_sid) == CHARADELI_STATUS_VISITING)
+    {
+        pid = CharaDeli_getSendTo(visit_sid);
+    }
+
+    return pid;
+}
+
+/**
+ * 強制的に帰還状態にする
+ */
+void Visit_forceReturn()
+{
+    if(CharaDeli_getStatus(visit_sid) == CHARADELI_STATUS_VISITING)
+    {
+        CharaDeli_forceReturn(visit_sid);
+    }
+    if(CharaDeli_getStatus(visit_auto_sid) == CHARADELI_STATUS_VISITING)
+    {
+        CharaDeli_forceReturn(visit_auto_sid);
+        visit_autoCharaDeliReturned = true;
+        DelProperty(VISIT_PROP_CURRENTCHAIN);
+        DelProperty(VISIT_PROP_LASTCHAINPID);
+    }
+}
+
+boolean visit_doVisit(int visit_sid)
+{
+    if(CharaDeli_doVisit(visit_sid) != 1)
+    {
+        // fail
+        // サインイン済みでも自分の状態がオフラインだと失敗する？
+        return false;
+    }
+
+    AltWindow_init();
+    SPR_run("Visit", "go");
+    SPR_run("Visit", "pandaInit");
+    Wait(3000);
+
+    // 画像表示をブランクにする
+    HideMsgBoxW(PWS_WINNAME_MAIN);
+    Surface_setTargetWindow(PWS_WINNAME_MAIN);
+    Surface_showImageSet("099");
+    ReflectConfigW(PWS_WINNAME_MAIN);
+
+    PutProperty(VISIT_PROP_VISITING, "1");
+
+    return true;
+}
 
 /**
  * 訪問準備が完了しているなら訪問処理を行う
@@ -41,42 +138,94 @@ action visit_go@(Second() % 2 == 1 && CharaDeli_isReady(visit_sid))
 {
     Debug(DEBUG_LV_TRACE, "Visit", "exec visit");
 
-    SPR_run("Visit", "go");
-    if(CharaDeli_doVisit(visit_sid) != 1)
-    {
-        // fail
-        // サインイン済みでも自分の状態がオフラインだと失敗する？
-    }
+    DelProperty(VISIT_PROP_CURRENTCHAIN);
+    DelProperty(VISIT_PROP_LASTCHAINPID);
+    visit_doVisit(visit_sid);
 }
 
+/**
+ * 自動訪問の準備
+ */
 action visit_auto_prepare@(Second() % 2 == 1 && visit_autoCharaDeliTrigger)
 {
     visit_autoCharaDeliTrigger = false;
     visit_prepareAutoCharaDeli();
 }
 
+/**
+ * 自動訪問の実行
+ */
 action visit_auto_go@(Second() % 2 == 1 && CharaDeli_isReady(visit_auto_sid))
 {
     Debug(DEBUG_LV_TRACE, "Visit", "exec visit auto");
 
-    if(CharaDeli_doVisit(visit_auto_sid) != 1)
-    {
-        // fail
-        // サインイン済みでも自分の状態がオフラインだと失敗する？
-    }
+    visit_doVisit(visit_auto_sid);
 }
 
+/**
+ * 通常訪問からの帰還
+ */
 action visit_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_sid))
 {
     Debug(DEBUG_LV_TRACE, "Visit", "return visit");
-
-    SPR_run("Visit", "return");
+    if(GetProperty(VISIT_PROP_VISITING) == "1")
+    {
+        // 訪問状態と認識していない(Visiting==0)場合は
+        // 下記の処理はしない
+        DelProperty(VISIT_PROP_CURRENTCHAIN);
+        DelProperty(VISIT_PROP_LASTCHAINPID);
+        visit_doReturn();
+    }
+    // メッセージがあれば表示だけしておく
     CharaDeli_showReplyMessage(visit_sid);
 }
 
-action visit_auto_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_auto_sid))
+/**
+ * 自動訪問からの帰還
+ */
+action visit_auto_return_dummy@(Second() % 2 == 1 && CharaDeli_isReturned(visit_auto_sid))
 {
     Debug(DEBUG_LV_TRACE, "Visit", "return visit auto");
+    // 自動訪問の場合，訪問先からのキャラクタ間通信をもって帰還処理する
+    // CharaDeli_isReturned()のチェックは行う必要がある
+    // (CharaDeliモジュール内で帰還済み→未訪問に状態変化する)
+}
+action visit_auto_return@(Second() % 2 == 1 && visit_autoCharaDeliReturned)
+{
+    visit_autoCharaDeliReturned = false;
+    if(GetProperty(VISIT_PROP_VISITING) == "1")
+    {
+        // 訪問状態と認識していない(Visiting==0)場合は
+        // 下記の処理はしない
+        visit_doReturn();
+    }
+}
+
+/**
+ * 帰還時に行う処理
+ */
+void visit_doReturn()
+{
+    PutProperty(VISIT_PROP_VISITING, "0");
+
+    Surface_setTargetWindow(PWS_WINNAME_MAIN);
+    Surface_showImageSet("000");
+    ReflectConfigW(PWS_WINNAME_MAIN);
+    Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+
+    SPR_run("Visit", "return");
+    string chaincount = GetProperty(VISIT_PROP_CURRENTCHAIN);
+    if(chaincount != NULL)
+    {
+        ICT_setExternalVariable("visit_chaincount", chaincount);
+        SPR_run("Visit", "chainCount");
+    }
+    Wait(3000);
+
+    SPR_run("Visit", "pandaDestroy");
+    Wait(3000);
+
+    AltWindow_destroy();
 }
 
 /**
@@ -85,7 +234,7 @@ action visit_auto_return@(Second() % 2 == 1 && CharaDeli_isReturned(visit_auto_s
 action visit_checkMessage@(Second() % 2 == 1)
 {
     string messages[][];
-    int count = ICComm_getMatchingMessages("/.*/", "/.*/", "/^MSCD\\/1\\.0 StartUp/", messages);
+    int count = ICComm_getMatchingMessages("/.*/", "/.*/", "/^MSCD\\/1\\.0/", messages);
     int i;
     for(i = 0; i < count; i++)
     {
@@ -94,17 +243,38 @@ action visit_checkMessage@(Second() % 2 == 1)
         string psn = messages[i][2];
         string msg = messages[i][3];
 
-        ICComm_sendMessage(pid, psn, "MSCD/1.0 StartUpAck " + psn, ICCOMM_SEND_SYNC);
-        ICComm_deleteMessage(time);
+        string cmd = StrToken(msg, " ", 1);
+        if(cmd == "StartUp")
+        {
+            ICComm_sendMessage(pid, psn, "MSCD/1.0 StartUpAck " + psn, ICCOMM_SEND_SYNC);
+            ICComm_deleteMessage(time);
+        }
+        else if(cmd == "CurrentChain")
+        {
+            PutProperty(VISIT_PROP_CURRENTCHAIN, StrToken(msg, " ", 2));
+            PutProperty(VISIT_PROP_LASTCHAINPID, pid);
+            ICComm_deleteMessage(time);
+        }
+        else if(cmd == "FinalChain")
+        {
+            visit_autoCharaDeliReturned = true;
+            PutProperty(VISIT_PROP_CURRENTCHAIN, StrToken(msg, " ", 2));
+            PutProperty(VISIT_PROP_LASTCHAINPID, pid);
+            ICComm_deleteMessage(time);
+        }
     }
 }
 
+/**
+ * 初期化
+ */
 void Visit_init()
 {
     MakePropertyTree(VISIT_PROP);
 
     visit_sid = CharaDeli_newSession();
     CharaDeli_setSendDataName(visit_sid, "etc\\visitor");
+    CharaDeli_setDefaultSessionID(visit_sid);
 
     visit_auto_sid = CharaDeli_newSession();
     CharaDeli_setSendDataName(visit_auto_sid, "etc\\visitor_chain");
@@ -115,6 +285,9 @@ void Visit_init()
     }
 }
 
+/**
+ * メニュー
+ */
 void Visit_menu()
 {
     boolean loop = true;
@@ -214,6 +387,9 @@ void Visit_menu()
     }
 }
 
+/**
+ * 設定
+ */
 void Visit_preference()
 {
     string pref[][];
@@ -380,8 +556,6 @@ boolean visit_autoCharaDeliMenu()
         {
             if(visit_isSignedIn())
             {
-                SPR_run("Visit", "go");
-
                 loop = false;
                 break_menu = true;
                 // 勝手に訪問トリガを立てる
