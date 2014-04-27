@@ -26,6 +26,8 @@ string visitor_rootpsn = "";
 
 boolean visitor_nextStageSent = false;
 boolean visitor_nextStageConfirmed = false;
+boolean visitor_isFinalChain = true;
+int visitor_nextStageConfirmTimeout = 0;
 
 int visit_sid = -1;
 
@@ -95,11 +97,26 @@ void VisitorStartUp(string from, string message)
     ICT_runScript("\eおじゃましまーす。\w\n" +
             "暇だったので{%sender}のところから勝手に遊びにきましたー。\n");
 
+    // 大元に現在段数を通知
     ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 CurrentChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
 }
 
 string VisitorShutDown()
 {
+    if(visitor_isFinalChain)
+    {
+        // メニューから終了させられた or 次の送信相手がいない
+        ICT_runScript("\eさて、\sそろそろ帰りますねー。");
+
+        // 大元にキャラデリ終了を通知
+        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 FinalChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
+    }
+    else
+    {
+        ICT_runScript("\eさて、\sそれじゃ次いきますねー。");
+    }
+    Wait(5000);
+
     ICT_runScript("\eそれでは。");
     Wait(3000);
     return "※このエラーメッセージはキャラクタ「愛佳」(NH-MXPJ-01R)の「多段キャラデリ」機能によるメッセージです。無視してください。";
@@ -229,18 +246,12 @@ Critical action visitor_checkTimeOut@(visitor_isTimeOut())
         // 通信NGなどで自分の型名が不明の場合，
         // 後段からの通信を受けることができないので
         // ここでチェイン終了
+        visitor_isFinalChain = true;
 
-        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 FinalChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
-
-        ICT_runScript("\eさて、\sそろそろ帰りますねー。");
-        Wait(5000);
         ExitPersona();
     }
     else
     {
-        ICT_runScript("\eさて、\sそれじゃ次いきますねー。");
-        Wait(5000);
-
         PutProperty("Visit\\CurrentChain", itoa(n_chain + 1));
 
         // 後段をキャラデリ準備
@@ -256,6 +267,7 @@ Critical action visitor_checkTimeOut@(visitor_isTimeOut())
         CharaDeli_ready(visit_sid);
         CharaDeli_doVisit(visit_sid);
 
+        visitor_nextStageConfirmTimeout = Time() + 20;
         visitor_nextStageSent = true;
     }
 }
@@ -265,6 +277,16 @@ Critical action visitor_checkTimeOut@(visitor_isTimeOut())
  */
 Critical action visitor_checkNextStageConfirmed@(Second() % 2 == 1 && visitor_nextStageSent && visitor_nextStageConfirmed)
 {
+    visitor_isFinalChain = false;
+    ExitPersona();
+}
+
+/**
+ * 後段からのメッセージが確認できなかった
+ */
+Critical action visitor_checkNextStageConfirmedFailed@(Second() % 2 == 1 && visitor_nextStageSent && Time() >= visitor_nextStageConfirmTimeout)
+{
+    visitor_isFinalChain = true;
     ExitPersona();
 }
 
