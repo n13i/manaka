@@ -140,6 +140,7 @@ void startup_greeting()
 {
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
     Surface_showImageSet("000");
+    ReflectConfig();
     Surface_playAnimation(SURFACE_ANIMATION_BLINK);
 
     if(startup_migrated)
