@@ -41,6 +41,7 @@
  *                            MXCL_checkUpdate
  * @date 2006/12/10 関数追加: MXCL_getMoonAge
  * @date 2014/04/16 関数追加: MXCL_getMemberStates
+ * @date 2014/04/28 関数追加: MXCL_getMemberNameFromPID
  *
  * @note     可変長配列及びリファレンスを利用する関数があるため、PWS1.x 向けの
  *           PDK ではコンパイルできません。
@@ -824,4 +825,53 @@ int MXCL_getMemberStates(string members[][], boolean only_online, boolean exclud
     }
 
     return n_members;
+}
+
+/**
+ * PIDからメンバー名を得る
+ *
+ * @date 2014/04/28 作成
+ */
+string MXCL_getMemberNameFromPID(string pid)
+{
+    if(L11GetOwnSignInState() != 1)
+    {
+        // サインインしていない
+        return pid;
+    }
+
+    string name = pid;
+
+    int handle;
+
+    // メンバーの状態をサーバに問い合わせる
+    if(L11GetOnlineState(handle, pid) == 1)
+    {
+        int resp;
+
+        // 結果が返ってくるまで待つ
+        while((resp = L11WaitResponse(handle, 50)) == -24)
+        {
+            Wait(0);
+        }
+
+        if(resp == 1)
+        {
+            int state_type;
+            string state_str;
+            string username;
+
+            L11GetResponseGetOnlineState(handle,
+                    state_type, state_str, username);
+            if(username != NULL && username != "")
+            {
+                name = username;
+            }
+        }
+
+        // ハンドルを破棄
+        L11CloseHandle(handle);
+    }
+
+    return name;
 }

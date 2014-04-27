@@ -1,25 +1,3 @@
-// -*- aya -*-
-/**
- * @author  n13i <n13i@m2hq.net>
- * @version 0.1.3
- *
- * @date 2006/02/21 作成
- * @date 2006/02/22 prefix MXCL_ 付加
- * @date 2006/03/05 関数追加・関数名変更
- * @date 2006/03/13 関数追加
- * @date 2006/07/13 関数追加
- * @date 2006/07/19 関数追加
- * @date 2006/07/25 関数追加
- * @date 2006/11/25 関数追加
- * @date 2006/12/10 関数追加
- * @date 2014/04/16 関数追加
- *
- * @file
- *
- * @defgroup libmxcl mxproject 共通キャラクタライブラリ
- * @{
- */
-
 int     MXCL_getOwnVendorAndType(string& vendor, string& type);
 int     MXCL_getInstalledCharacters(string characters[]);
 int     MXCL_makePropertyTree(string tree);
@@ -32,5 +10,4 @@ int     MXCL_checkUpdate(string feturl);
 string  MXCL_getFileContent(string filename);
 double  MXCL_getMoonAge(int time);
 int     MXCL_getMemberStates(string members[][], boolean only_online, boolean exclude_me);
-
-/* @} */
+string  MXCL_getMemberNameFromPID(string pid);
