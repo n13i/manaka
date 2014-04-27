@@ -272,7 +272,9 @@ void Surface_showImageSet(string name)
             if(surface_getCurrentImageSetId() == i)
             {
                 // nothing to do
-                return;
+                // 現在表示と同じ画像セットであっても再度処理する
+                // (一度Destroyされたwindowに対して再描画したい)
+                //return;
             }
 
             if(imgfile == "")
