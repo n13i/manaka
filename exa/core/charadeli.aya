@@ -37,6 +37,7 @@ string charadeli_replyMessageBody[];
 string charadeli_replyDate[];
 //string charadeli_messageBoundary[];
 
+int charadeli_defaultSID = -1;
 
 /**
  * @return セッション ID
@@ -77,6 +78,15 @@ void CharaDeli_destroySession(int sid)
     }
 
     charadeli_status[sid] = CHARADELI_STATUS_UNUSED;
+}
+
+/**
+ * デフォルトセッションIDを設定する
+ * メンバーリストからキャラデリ指示した場合に使われる
+ */
+void CharaDeli_setDefaultSessionID(int sid)
+{
+    charadeli_defaultSID = sid;
 }
 
 /**
@@ -127,7 +137,23 @@ void cIMMessageInputDialog(int result, string to, string message, string param)
     // 送信ボタンが押された
     if(result == 1)
     {
-        int sid = atoi(param);
+        int sid;
+        if(param == "")
+        {
+            // セッションIDが無い場合(メンバーリストから直接キャラデリ？)
+            // デフォルトのセッションIDを記載する
+            sid = charadeli_defaultSID;
+        }
+        else
+        {
+            sid = atoi(param);
+        }
+
+        if(CharaDeli_getStatus(sid) != CHARADELI_STATUS_NOVISIT)
+        {
+            // 指定されたsidが未訪問状態でなければ何もしない
+            return;
+        }
 
         CharaDeli_setSendTo(sid, to);
         CharaDeli_setSendMessageBody(sid, message);
@@ -151,6 +177,20 @@ void CharaDeli_setSendTo(int sid, string to)
 
     charadeli_to[sid] = to;
 }
+
+/**
+ * 送信先を得る
+ */
+string CharaDeli_getSendTo(int sid)
+{
+    if(!charadeli_isValidSessionId(sid))
+    {
+        return "";
+    }
+
+    return charadeli_to[sid];
+}
+
 
 /**
  * 訪問時に用いるデータを指定する
@@ -367,6 +407,15 @@ boolean CharaDeli_isReturned(int sid)
     return false;
 }
 
+/**
+ * 強制的に帰還状態にする
+ */
+void CharaDeli_forceReturn(int sid)
+{
+    charadeli_status[sid] = CHARADELI_STATUS_RETURNED;
+    charadeli_replyMessageBody[sid] = "";
+    charadeli_replyDate[sid] = Message_formatTime(Time());
+}
 
 /**
  * 返信メッセージを表示する
