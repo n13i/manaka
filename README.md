@@ -35,11 +35,12 @@ MITライセンスに基づいた利用が可能です。
   * [psnedit]
   * [tkprop]
   * Readme.txt
-* [character] ←作成し，ソースコードのアーカイブの中身を展開
-  * [manaka-master]
-    * [exa]
-    * build.bat
-    * exapack.lst
+* [character] ←作成
+  * [manaka] ←作成し，ソースコードのアーカイブの中身を展開
+    * [manaka-master]
+      * [exa]
+      * build.bat
+      * exapack.lst
 
 ### ビルド
 1. 上記のmanaka-masterフォルダでコマンドプロンプトを開く
