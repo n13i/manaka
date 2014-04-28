@@ -10,6 +10,7 @@
 #import "core/sprict_ict.h"
 #import "core/lib/mxcl/mxcl.h"
 #import "core/lib/mxcl/pwsconst.h"
+#import "core/iccomm.h"
 
 #import "visit.h"
 #import "test.h"
@@ -116,6 +117,7 @@ void startup_common()
     SPR_load("file:etc\\main.spct");
     ICT_init();
     ICT_setUseExtension(true);
+    ICComm_cleanupMessages();
 
     // --- persona
     Visit_init();
