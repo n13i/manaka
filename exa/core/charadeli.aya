@@ -16,6 +16,7 @@
 #import "prototype150.aya"
 #import "prototype200.aya"
 #import "prototype300.aya"
+#import "lib/mxcl/mxcl.h"
 #import "lib/mxcl/pwsconst.h"
 #import "message.h"
 #import "debug.h"
@@ -295,29 +296,7 @@ int CharaDeli_doVisit(int sid)
 
     // 自分のニックネームを得る
     // FIXME visitor でやってもいいかもしれない
-    int handle;
-    string name = L11GetPID();
-    if(L11GetOnlineState(handle, L11GetPID()) == 1)
-    {
-        int resp;
-
-        // 結果が返ってくるまで待つ
-        while((resp = L11WaitResponse(handle, 50)) == -24)
-        {
-            Wait(0);
-        }
-
-        if(resp == 1)
-        {
-            int state_type;
-            string state_str;
-
-            L11GetResponseGetOnlineState(
-                handle, state_type, state_str, name);
-        }
-
-        L11CloseHandle(handle);
-    }
+    string name = MXCL_getMemberNameFromPID(L11GetPID());
 
     Message_new();
     Message_setBody(charadeli_sendMessageBody[sid]);
