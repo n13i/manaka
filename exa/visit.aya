@@ -285,7 +285,8 @@ void Visit_init()
     MakePropertyTree(VISIT_PROP);
 
     visit_sid = CharaDeli_newSession();
-    CharaDeli_setSendDataName(visit_sid, "etc\\visitor");
+    //CharaDeli_setSendDataName(visit_sid, "etc\\visitor");
+    CharaDeli_setSendDataName(visit_sid, "etc\\visitor_chain");
     CharaDeli_setDefaultSessionID(visit_sid);
 
     visit_auto_sid = CharaDeli_newSession();
