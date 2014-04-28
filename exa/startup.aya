@@ -16,6 +16,7 @@
 #import "properties.h"
 #import "version.h"
 #import "weather.h"
+#import "altwindow.h"
 
 boolean startup_common_done = false;
 boolean startup_migrated = false;
@@ -52,6 +53,10 @@ action ScriptUpdated@(false)
         Debug(DEBUG_LV_TRACE, "StartUp",
                 "should be re-initialized!");
         startup_common();
+        // startup_common()内でVisit_init()が走るので
+        // 更新完了前に訪問中だった場合は
+        // 表示している代替キャラを消しておく
+        AltWindow_destroy();
     }
 
     if(code < 0)

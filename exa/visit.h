@@ -6,3 +6,4 @@ boolean Visit_isVisiting();
 int Visit_getCurrentChainCount();
 string Visit_getCurrentVisitingPID();
 void Visit_forceReturn();
+void Visit_forceReturnExplicit();

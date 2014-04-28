@@ -377,6 +377,12 @@ string bool_to_string(boolean b)
 
 action ShutDown@(false)
 {
+    // 訪問中だったら強制的に帰還状態にしてからシャットダウン
+    if(Visit_isVisiting())
+    {
+        Visit_forceReturnExplicit();
+    }
+
     Prop_setShutdownTime(-1);
     SPR_run("OnShutdown", "");
 }
@@ -421,5 +427,5 @@ void UpdateHistory()
     MsgBox_popSize();
     Talk("\e");
     HideMsgBox();
- }
+}
 

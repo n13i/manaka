@@ -104,6 +104,18 @@ void Visit_forceReturn()
     }
 }
 
+/**
+ * 強制的に帰還状態にし，帰還処理まで行う
+ *
+ * @note シャットダウン時等を想定
+ *       通常は帰還状態セット→基底状態で帰還処理アクションが走る
+ */
+void Visit_forceReturnExplicit()
+{
+    Visit_forceReturn();
+    visit_doReturn();
+}
+
 boolean visit_doVisit(int visit_sid)
 {
     if(CharaDeli_doVisit(visit_sid) != 1)
@@ -283,6 +295,9 @@ void Visit_init()
     {
         PutProperty(VISIT_PROP + "\\TimeOut", "5");
     }
+
+    // 訪問中フラグを落としておく
+    PutProperty(VISIT_PROP_VISITING, "0");
 }
 
 /**
