@@ -417,10 +417,10 @@ void Notification_preference()
         int j;
         for(j = 0; j < (lengthof result); j++)
         {
-            string id = UI_prefGetID(pref, i);
+            string id = UI_prefGetID(pref, j);
             if(id != "")
             {
-                PutProperty(id, result[i]);
+                PutProperty(id, result[j]);
             }
         }
     }
