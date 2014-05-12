@@ -15,6 +15,7 @@
 #import "visit.h"
 #import "mi.h"
 #import "properties.h"
+#import "notification.h"
 
 int lclick_lastClickedTime = 2147400000; // TODO 起動時刻で初期化したい
 int lclick_lastUnbusyTime = 0;
@@ -27,12 +28,37 @@ action lclick_unbusy@(Second() % 2 == 1 && Time() >= lclick_lastClickedTime + 90
 
 action MouseUpL@(false)
 {
+    mainMenu();
+}
+
+void mainMenu()
+{
     lclick_lastClickedTime = Time();
 
     string mi_question;
     mi_question = MI_getOneQuestion();
 
     MsgBox_setSize(16, 7);
+
+    if(Notification_isAvailableNew() && Notification_getUnreadCount() > 0)
+    {
+        Talk("\e");
+        SPR_run("Notification", "hasUnreadItems");
+        Talk("\n\n");
+
+        AddItem("見る")
+        {
+            Notification_showList();
+            return;
+        }
+        AddItem("見ない")
+        {
+        }
+        AddCancelItem
+        {
+        }
+        Choice;
+    }
 
     Talk("\e");
     SPR_run("Reaction", "called");
@@ -81,6 +107,11 @@ action MouseUpL@(false)
                 SPR_run("Weather", "query");
                 loop = false;
             }
+            AddItem(SPR_getText("Menu", "question_notification"))
+            {
+                loop = false;
+                Notification_showList();
+            }
             AddItem(SPR_getText("Menu", "question_uptime"))
             {
                 int now = Time();
@@ -103,9 +134,6 @@ action MouseUpL@(false)
             {
                 loop = false;
                 UpdateHistory();
-            }
-            AddItem("")
-            {
             }
             AddItem(SPR_getText("Menu", "back"))
             {
@@ -196,6 +224,10 @@ void Main_configMenu()
         {
             UI_showTitle("各機能の設定");
 
+            AddItem(ICON_FOLDER + " 通知設定")
+            {
+                Notification_preference();
+            }
             AddItem(ICON_FOLDER + " キャラデリの設定")
             {
                 Visit_preference();
@@ -206,9 +238,6 @@ void Main_configMenu()
                 MailCheck_preference();
             }
 */
-            AddItem("")
-            {
-            }
             AddItem("")
             {
             }

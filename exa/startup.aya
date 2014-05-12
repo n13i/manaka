@@ -18,6 +18,8 @@
 #import "version.h"
 #import "weather.h"
 #import "altwindow.h"
+#import "notification.h"
+#import "quake.h"
 
 boolean startup_common_done = false;
 boolean startup_migrated = false;
@@ -120,11 +122,13 @@ void startup_common()
     ICComm_cleanupMessages();
 
     // --- persona
+    Notification_init();
     Visit_init();
     Test_init();
     Prop_init();
     Version_setProfile();
     Weather_init();
+    Quake_init();
 
     ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
 

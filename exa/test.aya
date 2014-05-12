@@ -35,6 +35,8 @@ int ict_getStatements(string str, string cmds[]);
 //#import "version.h"
 #import "properties.h"
 #import "altwindow.h"
+#import "notification.h"
+
 
 
 
@@ -308,6 +310,10 @@ void Test_menu()
                     AltWindow_destroy();
                 }
                 Choice;
+            }
+            AddItem("’Ê’m")
+            {
+                test_Notification();
             }
             AddCancelItem
             {
@@ -1767,3 +1773,124 @@ void test_WMPP()
 //        Choice;
 //    }
 }
+
+int notification_getSources(string sources[]);
+int notification_getItems(string source, string items[][]);
+
+void test_Notification()
+{
+    boolean loop = true;
+    while(loop)
+    {
+        Talk("\e");
+        AddItem("registerSource")
+        {
+            Talk("\eSource:");
+
+            string source;
+            source = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+            if(source != NULL)
+            {
+                Notification_registerSource(source);
+            }
+        }
+        AddItem("unregisterSource")
+        {
+            Talk("\eSource:");
+
+            string source;
+            source = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+            if(source != NULL)
+            {
+                Notification_unregisterSource(source);
+            }
+        }
+        AddItem("add")
+        {
+            Talk("\esource:");
+            string source;
+            source = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+            if(source != NULL)
+            {
+                string title;
+                Talk(source + "\ntitle:");
+                title = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                if(title != NULL)
+                {
+                    string body;
+                    Talk(title + "\nbody:");
+                    body = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                    if(body != NULL)
+                    {
+                        string level;
+                        Talk(body + "\nlevel(high 0 - 7 low):");
+                        level = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+                        Notification_add(source, title, body, atoi(level));
+                    }
+                }
+            }
+        }
+        AddItem("deleteRead")
+        {
+            Notification_deleteRead();
+        }
+        AddItem("showList")
+        {
+            Notification_showList();
+        }
+        AddItem("preference")
+        {
+            Notification_preference();
+        }
+        AddItem("[private] getSources")
+        {
+            string srcs[];
+            notification_getSources(srcs);
+
+            int w = GetTalkWaitMode();
+            SetTalkWaitMode(PWS_TALK_NOWAIT);
+            Talk("\e");
+            int i;
+            for(i = 0; i < lengthof srcs; i++)
+            {
+                Talk(itoa(i) + ":" + srcs[i] + "\n");
+            }
+            SetTalkWaitMode(w);
+            Talk("\p");
+        }
+        AddItem("[private] getItems")
+        {
+            string src;
+            string items[][];
+            Talk("\esource:");
+            src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
+            if(src == NULL)
+            {
+                src = "";
+            }
+            notification_getItems(src, items);
+
+            int w = GetTalkWaitMode();
+            SetTalkWaitMode(PWS_TALK_NOWAIT);
+            Talk("\e");
+            int i;
+            for(i = 0; i < lengthof items; i++)
+            {
+                Talk(itoa(i) + ":\n");
+                Talk("source  : " + items[i][0] + "\n");
+                Talk("time    : " + items[i][1] + "\n");
+                Talk("title   : " + items[i][2] + "\n");
+                Talk("body    : " + items[i][3] + "\n");
+                Talk("isunread: " + items[i][4] + "\n");
+            }
+            SetTalkWaitMode(w);
+            Talk("\p");
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
+    }
+}
+
