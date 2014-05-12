@@ -1,0 +1,163 @@
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/lib/mxcl/mxcl.h"
+#import "notification.h"
+
+string QUAKE_PROP_ROOT = "Private\\Quake";
+string QUAKE_NOTIFY_SOURCE = "地震情報";
+
+void Quake_init()
+{
+    MXCL_makePropertyTree(QUAKE_PROP_ROOT);
+    Notification_registerSource(QUAKE_NOTIFY_SOURCE);
+}
+
+/*
+ * P2P地震情報連携プラグインから割り込みで呼ばれる
+ */
+export void NH_P2PQUAKE_Notify(string msg)
+{
+    string type = StrSubstring(msg, 0, 3);
+    string body = "";
+    if(StrLen(msg) >= 6)
+    {
+        body = StrSubstring(msg, 5, StrLen(msg)-1);
+        body = StrReplace(body, ",,", ",不明,");
+    }
+
+    if(type == "QUAK")
+    {
+        string info[];
+        if(quake_parse_QUAK(body, info))
+        {
+            Notification_add(
+                    QUAKE_NOTIFY_SOURCE,
+                    info[4] + "で地震がありました",
+                    info[0] + "、" + info[4] + "深さ" + info[5] +
+                    "でマグニチュード" +
+                    info[6] + "の地震がありました。" +
+                    info[2] + "。",
+                    NOTIFICATION_LEVEL_WARNING);
+        }
+    }
+    else if(type == "TIDL")
+    {
+        Notification_add(
+                QUAKE_NOTIFY_SOURCE,
+                "津波予報",
+                "津波予報が発表されています。",
+                NOTIFICATION_LEVEL_ALERT);
+    }
+    else if(type == "EEW1")
+    {
+        if(StrSubstring(body, 0, 0) == "0")
+        {
+            Notification_add(
+                    QUAKE_NOTIFY_SOURCE,
+                    "緊急地震速報",
+                    "予想震度5弱以上の地震が発生しました。",
+                    NOTIFICATION_LEVEL_ALERT);
+        }
+        else
+        {
+            Notification_add(
+                    QUAKE_NOTIFY_SOURCE,
+                    "【訓練】緊急地震速報",
+                    "これは訓練です。",
+                    NOTIFICATION_LEVEL_WARNING);
+        }
+    }
+
+    return;
+}
+
+boolean quake_parse_QUAK(string msg, string info[])
+{
+    // 12時34分頃,3,1,4,紀伊半島沖,ごく浅く,3.2,1,N12.3,E45.6,仙台管区気象台:-奈良県,+2,*下北山村,+1,*十津川村,*奈良川上村
+    emptyof info;
+
+    string head = StrToken(msg, ":", 0);
+    string body = StrToken(msg, ":", 1);
+
+    int i;
+    string token;
+    while((token = StrToken(head, ",", i)) != NULL)
+    {
+        if(i <= 1 || (i >= 4 && i <= 6))
+        {
+            // 0:時間
+            // 1:最大震度
+            // 4:震源
+            // 5:深さ
+            // 6:マグニチュード
+            // 8:緯度(N/S)
+            // 9:経度(E/W)
+            // 10:発表管区
+            info[i] = token;
+        }
+        else if(i == 2)
+        {
+            // 津波の有無(0=なし,1=あり,2=調査中,3=不明)
+            if(token == "0")
+            {
+                info[2] = "津波はありません";
+            }
+            else if(token == "1")
+            {
+                info[2] = "津波のおそれがあります";
+            }
+            else if(token == "2")
+            {
+                info[2] = "津波は調査中です";
+            }
+            else
+            {
+                info[2] = "津波は不明です";
+            }
+        }
+        else if(i == 3)
+        {
+            // 地震情報種類（1=震度速報,2=震源情報,3=震源・震度情報,4=震源・詳細震度情報,5=遠地地震情報）
+            if(token == "1")
+            {
+                info[3] = "震度速報";
+            }
+            else if(token == "2")
+            {
+                info[3] = "震源情報";
+            }
+            else if(token == "3")
+            {
+                info[3] = "震源・震度情報";
+            }
+            else if(token == "4")
+            {
+                info[3] = "震源・詳細震度情報";
+            }
+            else if(token == "5")
+            {
+                info[3] = "遠地地震情報";
+            }
+            else
+            {
+                info[3] = "情報種別不明";
+            }
+        }
+        else if(i == 7)
+        {
+            // 震度訂正(0=いいえ,1=はい)
+            if(token == "1")
+            {
+                info[7] = "震度訂正";
+            }
+            else
+            {
+                info[7] = "";
+            }
+        }
+        i++;
+    }
+
+    return true;
+}
+
