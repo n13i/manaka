@@ -1,0 +1,20 @@
+extern int NOTIFICATION_LEVEL_EMERGENCY;
+extern int NOTIFICATION_LEVEL_ALERT;
+extern int NOTIFICATION_LEVEL_CRITICAL;
+extern int NOTIFICATION_LEVEL_ERROR;
+extern int NOTIFICATION_LEVEL_WARNING;
+extern int NOTIFICATION_LEVEL_NOTICE;
+extern int NOTIFICATION_LEVEL_INFO;
+extern int NOTIFICATION_LEVEL_DEBUG;
+
+void    Notification_init();
+void    Notification_registerSource(string source);
+void    Notification_unregisterSource(string source);
+void    Notification_add(string source, string title, string body, int level);
+void    Notification_delete(string source, string time);
+void    Notification_deleteRead();
+int     Notification_getUnreadCount();
+int     Notification_getLastUpdate();
+void    Notification_showList();
+void    Notification_preference();
+boolean Notification_isAvailableNew();

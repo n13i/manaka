@@ -1,0 +1,537 @@
+/**
+ * 通知
+ */
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/msgbox.h"
+#import "core/ui.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+#import "core/icon.h"
+#import "core/lib/mxcl/mxcl.h"
+#import "core/lib/mxcl/pwsconst.h"
+
+// public:
+int NOTIFICATION_LEVEL_EMERGENCY = 0;
+int NOTIFICATION_LEVEL_ALERT = 1;
+int NOTIFICATION_LEVEL_CRITICAL = 2;
+int NOTIFICATION_LEVEL_ERROR = 3;
+int NOTIFICATION_LEVEL_WARNING = 4;
+int NOTIFICATION_LEVEL_NOTICE = 5;
+int NOTIFICATION_LEVEL_INFO = 6;
+int NOTIFICATION_LEVEL_DEBUG = 7;
+
+// private:
+string NOTIFICATION_PROP_ROOT = "Private\\Notification";
+string NOTIFICATION_PROP_ITEMS = "Private\\Notification\\Items";
+string NOTIFICATION_PROP_LASTUPDATE = "Private\\Notification\\LastUpdate";
+string NOTIFICATION_PROP_LASTCHECKED = "Private\\Notification\\LastChecked";
+string NOTIFICATION_PROP_PREFS = "Private\\Notification\\Preferences";
+
+int NOTIFICATION_ITEMS_SOURCE = 0;
+int NOTIFICATION_ITEMS_TIME = 1;
+int NOTIFICATION_ITEMS_TITLE = 2;
+int NOTIFICATION_ITEMS_BODY = 3;
+int NOTIFICATION_ITEMS_ISUNREAD = 4;
+int NOTIFICATION_ITEMS_LEVEL = 5;
+
+string NOTIFICATION_COLOR_READ = "9f9f9f";
+string NOTIFICATION_COLOR_LEVEL_HIGH = "ff0000";
+string NOTIFICATION_COLOR_LEVEL_MID = "000000";
+string NOTIFICATION_COLOR_LEVEL_LOW = "606060";
+
+string notification_queue[];
+int notification_queue_count = 0;
+//boolean notification_urgent_available = false;
+
+void Notification_init()
+{
+    MXCL_makePropertyTree(NOTIFICATION_PROP_ROOT);
+    MXCL_makePropertyTree(NOTIFICATION_PROP_PREFS);
+    if(GetProperty(NOTIFICATION_PROP_LASTUPDATE) == NULL)
+    {
+        PutProperty(NOTIFICATION_PROP_LASTUPDATE, "0");
+    }
+
+    emptyof notification_queue;
+    notification_queue_count = 0;
+    //notification_urgent_available = false;
+}
+
+/**
+ * 通知ソースの登録
+ */
+void Notification_registerSource(string source)
+{
+    MakePropertyTree(NOTIFICATION_PROP_ITEMS);
+    MakePropertyTree(NOTIFICATION_PROP_ITEMS + "\\" + source);
+}
+
+/**
+ * 通知ソースの削除
+ */
+void Notification_unregisterSource(string source)
+{
+    DelPropertyTree(NOTIFICATION_PROP_ITEMS + "\\" + source);
+}
+
+/**
+ * 通知を追加
+ *
+ * Notification\Items\source\0000000000\Title (string)
+ * Notification\Items\source\0000000000\Body (string)
+ * Notification\Items\source\0000000000\IsUnread (0/1)
+ */
+void Notification_add(string source, string title, string body, int level)
+{
+    string prop = "";
+    string time_serial = "";
+
+    string pref = GetProperty(NOTIFICATION_PROP_PREFS + "\\" + source);
+    if(pref == "" || pref == NULL)
+    {
+        pref = "0";
+    }
+
+    if(pref == "2")
+    {
+        return;
+    }
+
+    int time;
+    int serial;
+    for(serial = 0; serial < 1000; serial++)
+    {
+        time = Time();
+        time_serial = itoa(time) + "_" + itos("03d", serial);
+        prop = NOTIFICATION_PROP_ITEMS + "\\" + source + "\\" + time_serial;
+        if(!PropertyTreeExists(prop))
+        {
+            break;
+        }
+    }
+    if(prop == "")
+    {
+        // FIXME
+        return;
+    }
+
+    MakePropertyTree(prop);
+    PutProperty(prop + "\\Title", title);
+    PutProperty(prop + "\\Body", body);
+    PutProperty(prop + "\\IsUnread", "1");
+    PutProperty(prop + "\\Level", itoa(level));
+
+    PutProperty(NOTIFICATION_PROP_LASTUPDATE, itoa(Time()));
+
+    if(pref == "0")
+    {
+        // level,time_serial,source
+        notification_queue[notification_queue_count] = itoa(level) + "," + time_serial + "," + StrEncodeURL(source);
+        notification_queue_count++;
+    }
+}
+
+/**
+ * 表示すべき通知があるかチェックし，あったら喋る
+ */
+action notification_notify@(Second() % 2 == 0 && notification_queue_count > 0)
+{
+    int i;
+    for(i = 0; i < notification_queue_count; i++)
+    {
+        int level = atoi(StrToken(notification_queue[i], ",", 0));
+        string time = StrToken(notification_queue[i], ",", 1);
+        string source = StrDecodeURL(StrToken(notification_queue[i], ",", 2));
+
+        notification_show(source, time);
+
+        // 最後の通知ではないか？
+        if(i < notification_queue_count - 1)
+        {
+            Talk("\p");
+        }
+    }
+
+    notification_queue_count = 0;
+}
+
+/**
+ * 通知を喋る
+ */
+void notification_show(string i_source, string i_time)
+{
+    string item[];
+    if(!notification_getItem(i_source, i_time, item))
+    {
+        return;
+    }
+
+    string source   = item[NOTIFICATION_ITEMS_SOURCE];
+    string time     = item[NOTIFICATION_ITEMS_TIME];
+    string title    = item[NOTIFICATION_ITEMS_TITLE];
+    string body     = item[NOTIFICATION_ITEMS_BODY];
+    string isunread = item[NOTIFICATION_ITEMS_ISUNREAD];
+    int    level    = atoi(item[NOTIFICATION_ITEMS_LEVEL]);
+
+    int w = GetTalkWaitMode();
+    SetTalkWaitMode(PWS_TALK_NOWAIT);
+
+    Talk("\e\fb" +
+            notification_getStringColoredByLevel(level, title) +
+            "\_fb\n" +
+            notification_formatTime(time, false) + " " + source + "\n" +
+            UI_getHorizontalLine() + "\n");
+
+    SetTalkWaitMode(PWS_TALK_NORMAL);
+    ICT_runScript(body);
+    SetTalkWaitMode(w);
+
+    notification_setRead(source, time, true);
+}
+
+string notification_getStringColoredByLevel(int level, string str)
+{
+    string color = NOTIFICATION_COLOR_LEVEL_MID;
+
+    if(level <= NOTIFICATION_LEVEL_CRITICAL)
+    {
+        color = NOTIFICATION_COLOR_LEVEL_HIGH;
+    }
+    else if(level >= NOTIFICATION_LEVEL_INFO)
+    {
+        color = NOTIFICATION_COLOR_LEVEL_LOW;
+    }
+
+    return "\fc(" + color + ")" + str + "\_fc";
+}
+
+void Notification_deleteRead()
+{
+    int i;
+    string key;
+
+    // 既読アイテムの列挙
+    string items[][];
+    notification_getItems("", items);
+
+    for(i = 0; i < (lengthof items); i++)
+    {
+        if(items[i][4] == "0")
+        {
+            Notification_delete(items[i][0], items[i][1]);
+        }
+    }
+}
+
+int Notification_getUnreadCount()
+{
+    int i;
+    string key;
+
+    string items[][];
+    notification_getItems("", items);
+
+    int count = 0;
+    for(i = 0; i < (lengthof items); i++)
+    {
+        if(items[i][4] == "1")
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/**
+ * time: POSIX time + serial 0000000000_000
+ */
+void Notification_delete(string source, string time)
+{
+    DelPropertyTree(NOTIFICATION_PROP_ITEMS + "\\" + source + "\\" + time);
+}
+
+void notification_setRead(string source, string time, boolean is_read)
+{
+    string key = NOTIFICATION_PROP_ITEMS + "\\" + source + "\\" + time + "\\IsUnread";
+    if(is_read)
+    {
+        PutProperty(key, "0");
+    }
+    else
+    {
+        PutProperty(key, "1");
+    }
+}
+
+int Notification_getLastUpdate()
+{
+    return atoi(GetProperty(NOTIFICATION_PROP_LASTUPDATE));
+}
+
+/**
+ * 登録されている通知を表示
+ */
+void Notification_showList()
+{
+    int checked_time = 0;
+
+    string list[];
+    int list_index[];
+    string items[][];
+
+    MsgBox_pushSize();
+    MsgBox_setSize(24, 12);
+
+    int sel = 0;
+    boolean loop = true;
+    while(loop)
+    {
+        int lastupdate_time = atoi(GetProperty(NOTIFICATION_PROP_LASTUPDATE));
+        if(lastupdate_time > checked_time)
+        {
+            checked_time = Time();
+
+            emptyof items;
+            notification_getItems("", items);
+
+            int sort_items[];
+            int sort_index[];
+            int i;
+            for(i = 0; i < (lengthof items); i++)
+            {
+                sort_items[i] = atoi(StrToken(items[i][NOTIFICATION_ITEMS_TIME], "_", 0));
+            }
+            MXCL_arrayGetSortedIndexInt(sort_items, sort_index);
+
+            emptyof list;
+            emptyof list_index;
+            int n_items = lengthof items;
+            for(i = 0; i < n_items; i++)
+            {
+                int idx = sort_index[n_items - i - 1];
+                list[i] = notification_formatTime(items[idx][NOTIFICATION_ITEMS_TIME], true) + " [" + items[idx][NOTIFICATION_ITEMS_SOURCE] + "] " + items[idx][NOTIFICATION_ITEMS_TITLE];
+                if("0" == items[idx][NOTIFICATION_ITEMS_ISUNREAD])
+                {
+                    list[i] = "\fc(" + NOTIFICATION_COLOR_READ + ")" + list[i] + "\_fc";
+                }
+                list_index[i] = idx;
+            }
+        }
+
+        Talk("\e");
+        UI_showTitle("通知");
+        sel = UI_listBox(list, sel, -1, true);
+        if(sel != -1)
+        {
+            int idx = list_index[sel];
+            string source = items[idx][NOTIFICATION_ITEMS_SOURCE];
+            string time = items[idx][NOTIFICATION_ITEMS_TIME];
+
+            notification_show(source, time);
+            items[idx][NOTIFICATION_ITEMS_ISUNREAD] = "0";
+
+            AddItem(ICON_NG + " この通知を削除する")
+            {
+                Notification_delete(source, time);
+                checked_time = 0;
+            }
+            AddItem(ICON_NG + " 既読の通知を全て削除する")
+            {
+                Notification_deleteRead();
+                checked_time = 0;
+            }
+            AddItem(ICON_FILE + " この通知を未読にする")
+            {
+                notification_setRead(source, time, false);
+                items[idx][NOTIFICATION_ITEMS_ISUNREAD] = "1";
+                checked_time = 0;
+            }
+            AddItem(ICON_RETURN + " リストに戻る")
+            {
+                checked_time = 0;
+            }
+            AddCancelItem
+            {
+                checked_time = 0;
+            }
+            Choice;
+        }
+        else
+        {
+            loop = false;
+        }
+    }
+
+    MsgBox_popSize();
+    HideMsgBox();
+}
+
+string notification_formatTime(string time, boolean is_short_format)
+{
+    int t = atoi(StrToken(time, "_", 0));
+    string strtime = itos("02d", toMonth(t)) + "/" + itos("02d", toDate(t)) + " " + itos("02d", toHour(t)) + ":" + itos("02d", toMinute(t));
+    if(is_short_format)
+    {
+        // mm/dd HH:MM
+        return strtime;
+    }
+    else
+    {
+        // yyyy/mm/dd HH:MM:SS
+        return itos("04d", toYear(t)) + "/" + strtime + ":" + itos("02d", toSecond(t));
+    }
+}
+
+/**
+ * 設定
+ */
+void Notification_preference()
+{
+    boolean loop = true;
+    int page = 0;
+
+    string sources[];
+    notification_getSources(sources);
+
+    MsgBox_pushSize();
+    MsgBox_setSize(24, 15);
+
+    string pref[][];
+    string result[];
+
+    int i;
+    for(i = 0; i < (lengthof sources); i++)
+    {
+        UI_prefCreateItem(pref, i,
+                NOTIFICATION_PROP_PREFS + "\\" + sources[i],
+                UI_PREF_TYPE_SELECT,
+                sources[i] + "の通知",
+                SPR_getText("Notification_help", "notify_" + sources[i]),
+                "0=メッセージで通知,1=通知リストに記録,2=通知しない",
+                "");
+    }
+    if(UI_prefDialog("通知設定", pref, result) == 1)
+    {
+        int j;
+        for(j = 0; j < (lengthof result); j++)
+        {
+            string id = UI_prefGetID(pref, i);
+            if(id != "")
+            {
+                PutProperty(id, result[i]);
+            }
+        }
+    }
+
+    MsgBox_popSize();
+}
+
+int notification_getSources(string sources[])
+{
+    emptyof sources;
+
+    int i;
+    string key;
+    for(i = 0; (key = EnumChildProperty(NOTIFICATION_PROP_ITEMS, i)) != NULL; i++)
+    {
+        sources[i] = key;
+    }
+
+    return (lengthof sources);
+}
+
+boolean notification_getItem(string source, string time, string item[])
+{
+    emptyof item;
+    string prop = NOTIFICATION_PROP_ITEMS + "\\" + source + "\\" + time;
+
+    if(!PropertyTreeExists(prop))
+    {
+        return false;
+    }
+
+    item[NOTIFICATION_ITEMS_SOURCE] = source;
+    item[NOTIFICATION_ITEMS_TIME] = time;
+    item[NOTIFICATION_ITEMS_TITLE] = GetProperty(prop + "\\Title");
+    item[NOTIFICATION_ITEMS_BODY] = GetProperty(prop + "\\Body");
+    item[NOTIFICATION_ITEMS_ISUNREAD] = GetProperty(prop + "\\IsUnread");
+    item[NOTIFICATION_ITEMS_LEVEL] = GetProperty(prop + "\\Level");
+
+    return true;
+}
+
+/**
+ * sourceを""にすると全ソース取得
+ *
+ * items[n][0] : Source
+ * items[n][1] : Time
+ * items[n][2] : Title
+ * items[n][3] : Body
+ * items[n][4] : IsUnread
+ * items[n][5] : Level
+ */
+int notification_getItems(string source, string items[][])
+{
+    emptyof items;
+
+    string sources[];
+    if(source == "")
+    {
+        notification_getSources(sources);
+    }
+    else
+    {
+        sources[0] = source;
+    }
+
+    int i;
+    int j;
+    string key;
+    for(i = 0; i < (lengthof sources); i++)
+    {
+        string s = sources[i];
+        for(j = 0; (key = EnumChildProperty(NOTIFICATION_PROP_ITEMS + "\\" + s, j)) != NULL; j++)
+        {
+            string prop = NOTIFICATION_PROP_ITEMS + "\\" + s + "\\" + key + "\\";
+
+            int n = lengthof items;
+            items[n][NOTIFICATION_ITEMS_SOURCE] = s;
+            items[n][NOTIFICATION_ITEMS_TIME] = key;
+            items[n][NOTIFICATION_ITEMS_TITLE] = GetProperty(prop + "Title");
+            items[n][NOTIFICATION_ITEMS_BODY] = GetProperty(prop + "Body");
+            items[n][NOTIFICATION_ITEMS_ISUNREAD] = GetProperty(prop + "IsUnread");
+            items[n][NOTIFICATION_ITEMS_LEVEL] = GetProperty(prop + "Level");
+        }
+    }
+
+    return (lengthof items);
+}
+
+boolean Notification_isAvailableNew()
+{
+    string s_checked = GetProperty(NOTIFICATION_PROP_LASTCHECKED);
+    if(s_checked == "" || s_checked == NULL)
+    {
+        s_checked = "0";
+    }
+    int checked_time = atoi(s_checked);
+
+    string t = GetProperty(NOTIFICATION_PROP_LASTUPDATE);
+    if(t == "" || t == NULL)
+    {
+        t = "0";
+    }
+    int lastupdate_time = atoi(t);
+
+    PutProperty(NOTIFICATION_PROP_LASTCHECKED, itoa(Time()));
+
+    if(lastupdate_time > checked_time)
+    {
+        return true;
+    }
+
+    return false;
+}
+
