@@ -533,7 +533,15 @@ int UI_listBoxW(string winname, string items[], int selected,
             {
                 listbar[i] = ICON_SCROLLBAR0;
             }
-            pos_str = itoa(selected+1)+"Å`"+itoa(n_items)+"/"+itoa(n_items);
+
+            if(0 == n_items)
+            {
+                pos_str = "çÄñ⁄Ç»Çµ";
+            }
+            else
+            {
+                pos_str = itoa(selected+1)+"Å`"+itoa(n_items)+"/"+itoa(n_items);
+            }
         }
         else
         {
