@@ -108,3 +108,8 @@ void altwindow_MouseUpL(string winname, int x, int y, string posinfname)
     AddItemSetWindow(w);
 }
 
+boolean AltWindow_isExist()
+{
+    return IsPersonaWindowExists(ALTWINDOW_NAME);
+}
+
