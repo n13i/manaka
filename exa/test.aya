@@ -1189,6 +1189,10 @@ void test_Sprict()
 
             while(l)
             {
+                SetTalkWaitMode(PWS_TALK_NOWAIT);
+                Talk("section,option\n");
+                SetTalkWaitMode(PWS_TALK_NORMAL);
+
                 string src = EditBox(PWS_INPUT_TYPE_NORMAL, 1024, "");
 
                 if(src == NULL)
