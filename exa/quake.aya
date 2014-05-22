@@ -32,8 +32,11 @@ export void NH_P2PQUAKE_Notify(string msg)
         {
             Notification_add(
                     QUAKE_NOTIFY_SOURCE,
-                    info[4] + "で地震がありました",
-                    info[0] + "、" + info[4] + "深さ" + info[5] +
+                    "最大震度" + info[1] + " " + info[4],
+                    info[0] + "、" +
+                    "\a(https://www.google.com/maps/?q=" + info[8] + "," +
+                    info[9] + ")" + info[4] + "\_aの" +
+                    "深さ" + info[5] +
                     "でマグニチュード" +
                     info[6] + "の地震がありました。" +
                     info[2] + "。",
@@ -83,7 +86,7 @@ boolean quake_parse_QUAK(string msg, string info[])
     string token;
     while((token = StrToken(head, ",", i)) != NULL)
     {
-        if(i <= 1 || (i >= 4 && i <= 6))
+        if(i <= 1 || (i >= 4 && i <= 6) || (i >= 8 && i <= 10))
         {
             // 0:時間
             // 1:最大震度
