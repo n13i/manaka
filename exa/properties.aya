@@ -154,6 +154,24 @@ int Prop_getShutdownTime()
     return atoi(time);
 }
 
+void Prop_setLastUpdatedTime(int time)
+{
+    if(time < 0)
+    {
+        time = Time();
+    }
+    PutProperty(PROP_ROOT + "\\LastUpdatedTime", itoa(time));
+}
+int Prop_getLastUpdatedTime()
+{
+    string time = GetProperty(PROP_ROOT + "\\LastUpdatedTime");
+    if(time == NULL || time == "")
+    {
+        time = "-1";
+    }
+    return atoi(time);
+}
+
 void Prop_setAutoPsnUpdateEnabled(boolean enable)
 {
     prop_setBoolean("AutoPSNUpdate", enable);

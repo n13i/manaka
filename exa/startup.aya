@@ -20,6 +20,8 @@
 #import "altwindow.h"
 #import "notification.h"
 #import "quake.h"
+#import "messenger.h"
+#import "action_sparetime.h"
 
 boolean startup_common_done = false;
 boolean startup_migrated = false;
@@ -91,6 +93,7 @@ action ScriptUpdated@(false)
 
         SPR_run("UpdateDetail", VERSION_COUNT);
         PutProperty("LastUpdatedVersionCount", VERSION_COUNT);
+        Prop_setLastUpdatedTime(-1);
 
         // PSNファイルのアップデートをついでにやっとく
         if(Prop_getAutoPsnUpdateEnabled())
@@ -129,6 +132,8 @@ void startup_common()
     Version_setProfile();
     Weather_init();
     Quake_init();
+    Messenger_init();
+    Action_SpareTime_init();
 
     ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
 

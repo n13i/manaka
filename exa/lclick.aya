@@ -16,15 +16,16 @@
 #import "mi.h"
 #import "properties.h"
 #import "notification.h"
+#import "action_sparetime.h"
 
-int lclick_lastClickedTime = 2147400000; // TODO 起動時刻で初期化したい
-int lclick_lastUnbusyTime = 0;
-
-action lclick_unbusy@(Second() % 2 == 1 && Time() >= lclick_lastClickedTime + 900 && Time() >= lclick_lastUnbusyTime + 3600)
-{
-    Visit_triggerAutoVisit();
-    lclick_lastUnbusyTime = Time();
-}
+//int lclick_lastClickedTime = 2147400000; // TODO 起動時刻で初期化したい
+//int lclick_lastUnbusyTime = 0;
+//
+//action lclick_unbusy@(Second() % 2 == 1 && Time() >= lclick_lastClickedTime + 900 && Time() >= lclick_lastUnbusyTime + 3600)
+//{
+//    Visit_triggerAutoVisit();
+//    lclick_lastUnbusyTime = Time();
+//}
 
 action MouseUpL@(false)
 {
@@ -33,7 +34,8 @@ action MouseUpL@(false)
 
 void mainMenu()
 {
-    lclick_lastClickedTime = Time();
+    //lclick_lastClickedTime = Time();
+    Action_SpareTime_setBusy();
 
     string mi_question;
     mi_question = MI_getOneQuestion();
@@ -117,15 +119,18 @@ void mainMenu()
                 int now = Time();
                 int firstboot = Prop_getFirstBootTime();
                 int lastboot = Prop_getLastBootTime();
+                int lastupdated = Prop_getLastUpdatedTime();
+                if(lastupdated == -1) { lastupdated = now; }
                 int osboot = GetTickCount() / 1000;
                 int totalexec = atoi(GetProperty("..\\System\\TotalExecuteTime"));
                 int execcount = atoi(GetProperty("..\\System\\ExecuteCount"));
                 ICT_runScript("\e{quick:" +
-                        "ここに来てから        " + itoa((now - firstboot) / 86400) + "日\n" +
-                        "今回呼ばれてから      " + itoa((now - lastboot) / 3600) + "時間\n" +
-                        "Windowsが起動してから " + itoa(osboot / 3600) + "時間\n" +
-                        "累計稼働時間          " + itoa(totalexec / 3600) + "時間\n" +
-                        "累計起動回数          " + itoa(execcount) + "回\n" +
+                        "ここに来てから         " + itoa((now - firstboot) / 86400) + "日\n" +
+                        "今回呼ばれてから       " + itoa((now - lastboot) / 3600) + "時間\n" +
+                        "最後に更新成功してから " + itoa((now - lastupdated) / 86400) + "日\n" +
+                        "Windowsが起動してから  " + itoa(osboot / 3600) + "時間\n" +
+                        "累計稼働時間           " + itoa(totalexec / 3600) + "時間\n" +
+                        "累計起動回数           " + itoa(execcount) + "回\n" +
                         "}\wです。");
 
                 loop = false;
