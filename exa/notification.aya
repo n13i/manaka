@@ -3,6 +3,7 @@
  */
 #import "prototype150.aya"
 #import "prototype200.aya"
+#import "prototype300.aya"
 #import "core/msgbox.h"
 #import "core/ui.h"
 #import "core/sprict_spr.h"
@@ -144,6 +145,7 @@ action notification_notify@(Second() % 2 == 0 && notification_queue_count > 0)
         string time = StrToken(notification_queue[i], ",", 1);
         string source = StrDecodeURL(StrToken(notification_queue[i], ",", 2));
 
+        BringWindowToTop(PWS_WINNAME_MAIN);
         notification_show(source, time);
 
         // ç≈å„ÇÃí ímÇ≈ÇÕÇ»Ç¢Ç©ÅH
@@ -330,6 +332,7 @@ void Notification_showList()
             string time = items[idx][NOTIFICATION_ITEMS_TIME];
 
             notification_show(source, time);
+            Talk("\n\n");
             items[idx][NOTIFICATION_ITEMS_ISUNREAD] = "0";
 
             AddItem(ICON_NG + " Ç±ÇÃí ímÇçÌèúÇ∑ÇÈ")
