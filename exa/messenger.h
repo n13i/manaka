@@ -1,0 +1,1 @@
+void    Messenger_init();

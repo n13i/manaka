@@ -1,0 +1,48 @@
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/lib/mxcl/mxcl.h"
+#import "notification.h"
+
+string MESSENGER_PROP_ROOT = "Private\\Messenger";
+string MESSENGER_NOTIFY_SOURCE = "IM";
+
+int messenger_lastStateChangedTime = 0;
+string messenger_lastStateChangedPID = "";
+
+void cL11ChangedState(string pid, int state_type, string state_str, string name)
+{
+    if(4 != state_type)
+    {
+        return;
+    }
+
+    if(Time() > messenger_lastStateChangedTime || pid != messenger_lastStateChangedPID)
+    {
+        Notification_add(
+                MESSENGER_NOTIFY_SOURCE,
+                "オンライン " + pid,
+                name + "さんが「" + state_str + "」になりました。",
+                NOTIFICATION_LEVEL_INFO);
+    }
+
+    messenger_lastStateChangedTime = Time();
+    messenger_lastStateChangedPID = pid;
+}
+
+int cIMReceiveMessage(int time, string pid, string message)
+{
+    Notification_add(
+            MESSENGER_NOTIFY_SOURCE,
+            pid + "さんからメッセージ",
+            pid + "さんからメッセージが届きました。",
+            NOTIFICATION_LEVEL_INFO);
+
+    return 0;
+}
+
+void Messenger_init()
+{
+    MXCL_makePropertyTree(MESSENGER_PROP_ROOT);
+    Notification_registerSource(MESSENGER_NOTIFY_SOURCE);
+}
+
