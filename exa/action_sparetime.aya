@@ -1,0 +1,52 @@
+/*
+ * ‰É‚È‚Æ‚«
+ */
+
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "core/surface.h"
+#import "core/sprict_spr.h"
+#import "core/sprict_ict.h"
+#import "core/msgbox.h"
+#import "core/icon.h"
+#import "core/ui.h"
+#import "core/lib/mxcl/pwsconst.h"
+
+#import "visit.h"
+#import "properties.h"
+#import "notification.h"
+#import "altwindow.h"
+
+// ÅŒã‚É–Z‚µ‚¢”»’è‚³‚ê‚½‚Æ‚«‚ÌŽžŠÔ
+int action_sparetime_lastBusyTime = 2147400000;
+// ÅŒã‚É‰É‚È‚Æ‚«ƒAƒNƒVƒ‡ƒ“‚ð‚µ‚½‚Æ‚«‚ÌŽžŠÔ
+int action_sparetime_lastUnbusyTime = 0;
+
+int action_sparetime_lastAutoVisitTriggeredTime = 0;
+
+void Action_SpareTime_init()
+{
+    action_sparetime_lastBusyTime = Time();
+}
+
+// ÅŒã‚Ì–Z‚µ‚¢”»’è‚©‚ç15•ª‚©‚ÂÅŒã‚ÉŽ©“®–K–âƒgƒŠƒK[‚µ‚Ä‚©‚ç1ŽžŠÔ
+action action_sparetime_autovisit@(Second() % 2 == 1 && Time() >= action_sparetime_lastBusyTime + 900 && Time() >= action_sparetime_lastAutoVisitTriggeredTime + 3600)
+{
+    Visit_triggerAutoVisit();
+    action_sparetime_lastAutoVisitTriggeredTime = Time();
+}
+
+action action_sparetime_changesurface@(Second() % 2 == 1 && Time() >= action_sparetime_lastBusyTime + 180 && Time() >= action_sparetime_lastUnbusyTime + 300)
+{
+    if(Visit_isVisiting() || !AltWindow_isExist())
+    {
+        SPR_run("SpareTime", "changeSurface");
+    }
+    action_sparetime_lastUnbusyTime = Time();
+}
+
+void Action_SpareTime_setBusy()
+{
+    action_sparetime_lastBusyTime = Time();
+}
+
