@@ -73,7 +73,7 @@ action ScriptUpdated@(false)
     else
     {
         Surface_setTargetWindow(PWS_WINNAME_MAIN);
-        Surface_showImageSet("000");
+        Surface_showImageSet("normal");
         Surface_playAnimation(SURFACE_ANIMATION_BLINK);
 
         if(startup_migrated)
@@ -138,7 +138,7 @@ void startup_common()
     ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
 
     // ----------------------------------------------------------------------
-    Surface_load("img\\surface");
+    Surface_load("img\\surface\\uniform");
     MsgBox_setStyle("default");
     MsgBox_setSize(16, 7);
 
@@ -155,7 +155,7 @@ void startup_common()
 void startup_greeting()
 {
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
-    Surface_showImageSet("000");
+    Surface_showImageSet("normal");
     ReflectConfig();
     Surface_playAnimation(SURFACE_ANIMATION_BLINK);
 

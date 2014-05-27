@@ -133,7 +133,7 @@ boolean visit_doVisit(int visit_sid)
     // ‰æ‘œ•\Ž¦‚ðƒuƒ‰ƒ“ƒN‚É‚·‚é
     HideMsgBoxW(PWS_WINNAME_MAIN);
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
-    Surface_showImageSet("099");
+    Surface_showImageSet("blank");
     ReflectConfigW(PWS_WINNAME_MAIN);
 
     PutProperty(VISIT_PROP_VISITING, "1");
@@ -221,7 +221,7 @@ void visit_doReturn()
     PutProperty(VISIT_PROP_VISITING, "0");
 
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
-    Surface_showImageSet("000");
+    Surface_showImageSet("normal");
     ReflectConfigW(PWS_WINNAME_MAIN);
     Surface_playAnimation(SURFACE_ANIMATION_BLINK);
 

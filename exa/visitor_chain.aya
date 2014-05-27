@@ -77,7 +77,7 @@ void VisitorStartUp(string from, string message)
     Surface_load("img\\surface");
 
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
-    Surface_showImageSet("000");
+    Surface_showImageSet("normal");
     Surface_playAnimation(SURFACE_ANIMATION_BLINK);
 
     // メッセージのヘッダから前段のキャラデリ元の型名と発信元PIDを得る
