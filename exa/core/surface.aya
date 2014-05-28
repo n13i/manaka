@@ -83,6 +83,16 @@ void Surface_init()
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
 }
 
+boolean Surface_isExist(string path)
+{
+    if(1 != FileExist(path + "\\surface.ini"))
+    {
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * 画像セット定義ファイルを読み込む
  *
@@ -304,19 +314,29 @@ void Surface_showImageSet(string name)
                 // 変更前に再生中のアニメーションを全て停止
                 Surface_stopAllAnimations();
 
+                int reflect_required = 0;
+
                 // CG表示オフセットの変更
-                PutProperty("VdConfig\\" + winname + "MainWin\\OffsetX",
-                    offset_x);
-                PutProperty("VdConfig\\" + winname + "MainWin\\OffsetY",
-                    offset_y);
+                reflect_required += surface_changeProperty(
+                        "VdConfig\\" + winname + "MainWin\\OffsetX",
+                        offset_x);
+                reflect_required += surface_changeProperty(
+                        "VdConfig\\" + winname + "MainWin\\OffsetY",
+                        offset_y);
                 // 吹き出し基準位置の設定
-                PutProperty("VdConfig\\" + winname + "MsgBox\\PositionXL",
-                    msgpos_xl);
-                PutProperty("VdConfig\\" + winname + "MsgBox\\PositionXR",
-                    msgpos_xr);
-                PutProperty("VdConfig\\" + winname + "MsgBox\\PositionY",
-                    msgpos_y);
-                ReflectConfig();
+                reflect_required += surface_changeProperty(
+                        "VdConfig\\" + winname + "MsgBox\\PositionXL",
+                        msgpos_xl);
+                reflect_required += surface_changeProperty(
+                        "VdConfig\\" + winname + "MsgBox\\PositionXR",
+                        msgpos_xr);
+                reflect_required += surface_changeProperty(
+                        "VdConfig\\" + winname + "MsgBox\\PositionY",
+                        msgpos_y);
+                if(0 < reflect_required)
+                {
+                    ReflectConfigW(winname);
+                }
 
                 LoadBitmapW(winname, imgfile);
                 DisplayImageW(winname, PWS_EFFECT_USER);
@@ -331,6 +351,17 @@ void Surface_showImageSet(string name)
             break;
         }
     }
+}
+
+int surface_changeProperty(string key, string value)
+{
+    if(value == GetProperty(key))
+    {
+        return 0;
+    }
+
+    PutProperty(key, value);
+    return 1;
 }
 
 /**

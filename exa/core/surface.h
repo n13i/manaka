@@ -5,6 +5,7 @@ extern int SURFACE_ANIMATION_TALK;
 void Surface_debug();
 
 void Surface_init();
+boolean Surface_isExist(string path);
 int Surface_load(string path);
 string Surface_getLoadedPath();
 

@@ -22,6 +22,7 @@
 #import "quake.h"
 #import "messenger.h"
 #import "action_sparetime.h"
+#import "contextmenu.h"
 
 boolean startup_common_done = false;
 boolean startup_migrated = false;
@@ -138,7 +139,16 @@ void startup_common()
     ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
 
     // ----------------------------------------------------------------------
-    Surface_load("img\\surface\\basic");
+    string surface_path = Prop_getLastLoadedSurfacePath();
+    if(!Surface_isExist(surface_path))
+    {
+        surface_path = "img\\surface\\basic";
+    }
+    Surface_load(surface_path);
+    Prop_setLastLoadedSurfacePath(Surface_getLoadedPath());
+
+    ContextMenu_init();
+
     MsgBox_setStyle("default");
     MsgBox_setSize(16, 7);
 

@@ -205,3 +205,12 @@ boolean prop_getBoolean(string key, boolean defvalue)
     return ret;
 }
 
+void Prop_setLastLoadedSurfacePath(string path)
+{
+    PutProperty(PROP_ROOT + "\\LastLoadedSurfacePath", path);
+}
+string Prop_getLastLoadedSurfacePath()
+{
+    return GetProperty(PROP_ROOT + "\\LastLoadedSurfacePath");
+}
+

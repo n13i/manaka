@@ -19,3 +19,5 @@ void    Prop_setLastUpdatedTime(int time);
 int     Prop_getLastUpdatedTime();
 void    Prop_setAutoPsnUpdateEnabled(boolean enable);
 boolean Prop_getAutoPsnUpdateEnabled();
+void    Prop_setLastLoadedSurfacePath(string path);
+string  Prop_getLastLoadedSurfacePath();
