@@ -38,7 +38,7 @@ action action_sparetime_autovisit@(Second() % 2 == 1 && Time() >= action_spareti
 
 action action_sparetime_changesurface@(Second() % 2 == 1 && Time() >= action_sparetime_lastBusyTime + 180 && Time() >= action_sparetime_lastUnbusyTime + 300)
 {
-    if(Visit_isVisiting() || !AltWindow_isExist())
+    if(!Visit_isVisiting() && !AltWindow_isExist())
     {
         SPR_run("SpareTime", "changeSurface");
     }
