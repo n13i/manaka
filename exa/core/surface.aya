@@ -185,6 +185,17 @@ int Surface_load(string path)
 
 string Surface_getLoadedPath()
 {
+    // ––”ö‚Ì\\‚ðíœ‚µ‚Ä•Ô‚·
+    if(1 > StrLen(surface_path))
+    {
+        return "";
+    }
+
+    if("\\" == StrSubstring(surface_path, StrLen(surface_path) - 1, StrLen(surface_path) - 1))
+    {
+        return StrSubstring(surface_path, 0, StrLen(surface_path) - 2);
+    }
+
     return surface_path;
 }
 
