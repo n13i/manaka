@@ -138,7 +138,7 @@ void startup_common()
     ICT_setUserNamePropertyKey(Prop_getUserNamePropertyKey());
 
     // ----------------------------------------------------------------------
-    Surface_load("img\\surface\\uniform");
+    Surface_load("img\\surface\\basic");
     MsgBox_setStyle("default");
     MsgBox_setSize(16, 7);
 
