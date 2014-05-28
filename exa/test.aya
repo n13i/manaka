@@ -315,6 +315,29 @@ void Test_menu()
             {
                 test_Notification();
             }
+            AddItem("Visitorデバッグモード")
+            {
+                if("1" == GetProperty("Visit\\Debug"))
+                {
+                    Talk("\e現在:ON\n");
+                }
+                else
+                {
+                    Talk("\e現在:OFF\n");
+                }
+                AddItem("オフ")
+                {
+                    PutProperty("Visit\\Debug", "0");
+                }
+                AddItem("オン")
+                {
+                    PutProperty("Visit\\Debug", "1");
+                }
+                AddCancelItem
+                {
+                }
+                Choice;
+            }
             AddCancelItem
             {
                 menuPage = 0;

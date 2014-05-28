@@ -34,6 +34,8 @@ int visit_sid = -1;
 
 boolean visitor_isAutoVisit = false;
 
+boolean VISITOR_DEBUG = false;
+
 // 自分の型名 前段から教えてもらい，後段に伝える
 string my_psn = "";
 
@@ -45,8 +47,6 @@ string my_psn = "";
  */
 void VisitorStartUp(string from, string message)
 {
-    Talk("starting\p");
-
     Prop_deletePrivateTree();
     DelPropertyTree("MXkernel");
     SaveProperty();
@@ -74,6 +74,10 @@ void VisitorStartUp(string from, string message)
     PutProperty("Visit\\ChainUsers",
             GetProperty("Visit\\ChainUsers") + "," + StrEncodeURL(L11GetPID()));
 
+    if("1" == GetProperty(VISIT_PROP + "\\Debug"))
+    {
+        VISITOR_DEBUG = true;
+    }
 
     MsgBox_setStyle("default");
     MsgBox_setSize(16, 7);
@@ -389,8 +393,11 @@ boolean visitor_isTimeOut()
         timeout = "5";
     }
 
-    //timeout_second = atoi(timeout) * 60;
-    timeout_second = 60; // for debugging
+    timeout_second = atoi(timeout) * 60;
+    if(VISITOR_DEBUG)
+    {
+        timeout_second = 60; // for debugging
+    }
 
     if(Time() > visitor_time + timeout_second)
     {
@@ -447,8 +454,14 @@ void visitor_auto_procTimeOut()
         string vst = Visit_generateVSTFile();
         // FIXME vstが生成できているかチェック
         CharaDeli_setSendDataName(visit_sid, vst);
-        //CharaDeli_setSendTo(visit_sid, next_pid);
-        CharaDeli_setSendTo(visit_sid, "naoh128"); // TODO
+        if(!VISITOR_DEBUG)
+        {
+            CharaDeli_setSendTo(visit_sid, next_pid);
+        }
+        else
+        {
+            CharaDeli_setSendTo(visit_sid, "naoh128"); // TODO
+        }
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-FromPSN", my_psn);
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-RootPSN", visitor_rootpsn);
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-Root", visitor_root);

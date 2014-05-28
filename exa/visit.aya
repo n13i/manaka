@@ -122,6 +122,7 @@ boolean visit_doVisit(int visit_sid)
         return false;
     }
     CharaDeli_setSendDataName(visit_sid, vst);
+    //CharaDeli_setSendDataName(visit_sid, "etc\\visitor_test2");
 
     if(CharaDeli_doVisit(visit_sid) != 1)
     {
