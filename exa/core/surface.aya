@@ -19,14 +19,15 @@
 
 int SURFACE_ANIMATION_BLINK = 0;
 int SURFACE_ANIMATION_TALK  = 1;
+int SURFACE_ANIMATION_MAX   = 2;
 
 /*
  * surface 定義データ
  *
  * surface_d[0][SURFACE_D_NAME][0] = "000";
  * surface_d[0][SURFACE_D_BASE][0] = "0.hp3";
- * surface_d[0][SURFACE_D_ANIM][0] = "0_blink.hps";
- * surface_d[0][SURFACE_D_ANIM][1] = "0_talk.hps";
+ * surface_d[0][SURFACE_D_ANIM][0] = "0_blink:...";
+ * surface_d[0][SURFACE_D_ANIM][1] = "0_talk:...";
  * surface_d[0][SURFACE_D_ANIMSTOP][0] = "0_blink0.hp3,x,y";
  * surface_d[0][SURFACE_D_ANIMSTOP][1] = "0_talk0.hp3,x,y";
  * surface_d[0][SURFACE_D_OFFSET][0] = 0;   // OffsetX
@@ -64,7 +65,9 @@ string  surface_windows[];
 string  surface_path = "";
 
 string  SURFACE_LOGDOMAIN = "Surface";
+string  SURFACE_TEMPDIR = "local\\tmp_surface";
 
+// ----------------------------------------------------------------------
 
 /**
  * surface モジュールの初期化
@@ -76,6 +79,7 @@ void Surface_init()
     Debug_registerLogDomain(SURFACE_LOGDOMAIN);
     Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN, "init");
 
+    DelFolder(SURFACE_TEMPDIR);
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
 }
 
@@ -116,6 +120,7 @@ int Surface_load(string path)
 
     INI_getSections(ini, sections);
 
+    int imgset_id = 0;
     emptyof surface_d;
     for(i = 0; i < lengthof sections; i++)
     {
@@ -124,28 +129,29 @@ int Surface_load(string path)
         if(section != "Aliases")
         {
             // FIXME キーが存在しないときの処理
-            surface_d[i][SURFACE_D_NAME][0] = section;
+            surface_d[imgset_id][SURFACE_D_NAME][0] = section;
 
-            surface_d[i][SURFACE_D_BASE][0] =
+            surface_d[imgset_id][SURFACE_D_BASE][0] =
                 INI_getValue(ini, section, "base");
-            surface_d[i][SURFACE_D_ANIM][SURFACE_ANIMATION_BLINK] =
+            surface_d[imgset_id][SURFACE_D_ANIM][SURFACE_ANIMATION_BLINK] =
                 INI_getValue(ini, section, "anim_blink");
-            surface_d[i][SURFACE_D_ANIM][SURFACE_ANIMATION_TALK] =
+            surface_d[imgset_id][SURFACE_D_ANIM][SURFACE_ANIMATION_TALK] =
                 INI_getValue(ini, section, "anim_talk");
-            surface_d[i][SURFACE_D_ANIMSTOP][SURFACE_ANIMATION_BLINK] =
+            surface_d[imgset_id][SURFACE_D_ANIMSTOP][SURFACE_ANIMATION_BLINK] =
                 INI_getValue(ini, section, "stop_blink");
-            surface_d[i][SURFACE_D_ANIMSTOP][SURFACE_ANIMATION_TALK] =
+            surface_d[imgset_id][SURFACE_D_ANIMSTOP][SURFACE_ANIMATION_TALK] =
                 INI_getValue(ini, section, "stop_talk");
-            surface_d[i][SURFACE_D_OFFSET][0] =
+            surface_d[imgset_id][SURFACE_D_OFFSET][0] =
                 INI_getValue(ini, section, "base_offset_x");
-            surface_d[i][SURFACE_D_OFFSET][1] =
+            surface_d[imgset_id][SURFACE_D_OFFSET][1] =
                 INI_getValue(ini, section, "base_offset_y");
-            surface_d[i][SURFACE_D_MSGPOS][0] =
+            surface_d[imgset_id][SURFACE_D_MSGPOS][0] =
                 INI_getValue(ini, section, "msgbox_position_xl");
-            surface_d[i][SURFACE_D_MSGPOS][1] =
+            surface_d[imgset_id][SURFACE_D_MSGPOS][1] =
                 INI_getValue(ini, section, "msgbox_position_xr");
-            surface_d[i][SURFACE_D_MSGPOS][2] =
+            surface_d[imgset_id][SURFACE_D_MSGPOS][2] =
                 INI_getValue(ini, section, "msgbox_position_y");
+            imgset_id++;
         }
     }
 
@@ -165,6 +171,11 @@ int Surface_load(string path)
     surface_path = path + "\\";
 
     return 1;
+}
+
+string Surface_getLoadedPath()
+{
+    return surface_path;
 }
 
 /**
@@ -259,14 +270,14 @@ void Surface_showImageSet(string name)
 
     for(i = 0; i < lengthof surface_d; i++)
     {
-        if(surface_d[i][SURFACE_D_NAME][0] == name)
+        if(surface_getName(i) == name)
         {
-            string imgfile = surface_d[i][SURFACE_D_BASE][0];
-            string offset_x = surface_d[i][SURFACE_D_OFFSET][0];
-            string offset_y = surface_d[i][SURFACE_D_OFFSET][1];
-            string msgpos_xl = surface_d[i][SURFACE_D_MSGPOS][0];
-            string msgpos_xr = surface_d[i][SURFACE_D_MSGPOS][1];
-            string msgpos_y = surface_d[i][SURFACE_D_MSGPOS][2];
+            string imgfile = surface_getBaseImageFilePath(i);
+            string offset_x = surface_getOffsetX(i);
+            string offset_y = surface_getOffsetY(i);
+            string msgpos_xl = surface_getMsgBoxPositionXL(i);
+            string msgpos_xr = surface_getMsgBoxPositionXR(i);
+            string msgpos_y = surface_getMsgBoxPositionY(i);
             string winname = surface_getTargetWindow();
 
             if(surface_getCurrentImageSetId() == i)
@@ -288,7 +299,7 @@ void Surface_showImageSet(string name)
                   "show: loading imageset " + name + " (" + itoa(i) +
                   "): '" + imgfile + "' on window '" + winname + "'");
 
-            if(FileExist(surface_path + imgfile) == 1)
+            if(FileExist(imgfile) == 1)
             {
                 // 変更前に再生中のアニメーションを全て停止
                 Surface_stopAllAnimations();
@@ -307,7 +318,7 @@ void Surface_showImageSet(string name)
                     msgpos_y);
                 ReflectConfig();
 
-                LoadBitmapW(winname, surface_path + imgfile);
+                LoadBitmapW(winname, imgfile);
                 DisplayImageW(winname, PWS_EFFECT_USER);
                 surface_setCurrentImageSetId(i);
             }
@@ -374,13 +385,13 @@ void Surface_playAnimation(int anim_id)
             return;
         }
 
-        string hpsfile = surface_d[imgset_id][SURFACE_D_ANIM][anim_id];
         string winname = surface_getTargetWindow();
 
-        if(hpsfile == "")
+        string hpsfile = surface_parseAnimationDefinition(imgset_id, anim_id);
+        if("" == hpsfile)
         {
-            Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN,
-                  "playAnimation: hpsfile not set");
+            Debug(DEBUG_LV_ERROR, SURFACE_LOGDOMAIN,
+                  "playAnimation: hpsfile generation failed");
             return;
         }
 
@@ -388,8 +399,7 @@ void Surface_playAnimation(int anim_id)
               "playAnimation: starting animation " + itoa(anim_id) +
               " (" + hpsfile + ") on window '" + winname + "'");
 
-        AnimationPlayW(winname, surface_path + hpsfile,
-                       PWS_ANIMATION_ASYNC);
+        AnimationPlayW(winname, hpsfile, PWS_ANIMATION_ASYNC);
 
         surface_setAnimationPlaying(anim_id, true);
     }
@@ -414,18 +424,18 @@ void Surface_stopAnimation(int anim_id)
             return;
         }
 
-        string hpsfile = surface_d[imgset_id][SURFACE_D_ANIM][anim_id];
-
         string imgfile = "";
         int imgpos_x = -1;
         int imgpos_y = -1;
-        string stopimg_cfg = surface_d[imgset_id][SURFACE_D_ANIMSTOP][anim_id];
         string stopimg[];
-        BREGSplit("/,/", stopimg_cfg, stopimg);
-        if(lengthof stopimg > 0)
+        if(!surface_getAnimationStopDefinition(imgset_id, anim_id, stopimg))
         {
-            imgfile = stopimg[0];
+            Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN,
+                  "stopAnimation: hpsdef or/and imgfile not set");
+            return;
         }
+
+        imgfile = stopimg[0];
         if(lengthof stopimg == 3)
         {
             imgpos_x = atoi(stopimg[1]);
@@ -434,10 +444,11 @@ void Surface_stopAnimation(int anim_id)
 
         string winname = surface_getTargetWindow();
 
-        if(hpsfile == "" || imgfile == "")
+        string hpsfile = surface_parseAnimationDefinition(imgset_id, anim_id);
+        if("" == hpsfile)
         {
-            Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN,
-                  "stopAnimation: hpsfile or/and imgfile not set");
+            Debug(DEBUG_LV_ERROR, SURFACE_LOGDOMAIN,
+                  "stopAnimation: hpsfile generation failed");
             return;
         }
 
@@ -445,18 +456,18 @@ void Surface_stopAnimation(int anim_id)
               "stopAnimation: stop animation " + itoa(anim_id) +
               " (" + hpsfile + ") on window '" + winname + "'");
 
-        AnimationStopW(winname, surface_path + hpsfile);
+        AnimationStopW(winname, hpsfile);
 
-        if(FileExist(surface_path + imgfile) == 1)
+        if(FileExist(imgfile) == 1)
         {
             if(imgpos_x == -1)
             {
-                MergeBitmapW(winname, surface_path + imgfile,
+                MergeBitmapW(winname, imgfile,
                         PWS_TRANS_NONE, PWS_EFFECT_NONE);
             }
             else
             {
-                MergeBitmapXYW(winname, surface_path + imgfile,
+                MergeBitmapXYW(winname, imgfile,
                         imgpos_x, imgpos_y, PWS_TRANS_NONE, PWS_EFFECT_NONE);
             }
         }
@@ -557,7 +568,288 @@ string surface_getNameFromAlias(string alias)
     return alias;
 }
 
+/**
+ * surface定義ファイル中のアニメーション定義をパースして
+ * hpsファイルをテンポラリフォルダに作成して
+ * そのファイル名を返す
+ *
+ * anim_blink = hp3_basename:LoopInterval:method=x,y,transp_flag,wait;...
+ */
+string surface_parseAnimationDefinition(int id, int anim_id)
+{
+    string tmpdir = SURFACE_TEMPDIR;
 
+    string defs[];
+    string imgs[][];
+    if(!surface_getAnimationDefinition(id, anim_id, defs, imgs))
+    {
+        return "";
+    }
+
+    string hpsname = StrReplace(surface_path + defs[0], "\\", "_") + ".hps";
+    string loopInterval = defs[1];
+
+    if(1 == FileExist(hpsname))
+    {
+        if(FileUTime(hpsname) >= FileUTime(surface_path + "surface.ini"))
+        {
+            // hpsファイル生成済みかつsurface.iniより新しければ
+            // そのまま生成済みのファイルを使う
+            return hpsname;
+        }
+    }
+
+    if(!FolderExists("local"))
+    {
+        MakeFolder("local");
+    }
+    if(!FolderExists(tmpdir))
+    {
+        MakeFolder(tmpdir);
+    }
+
+    int fh;
+    fh = FileOpen(tmpdir + "\\" + hpsname, "w");
+    if(fh < 0)
+    {
+        return "";
+    }
+
+    if(FilePuts("[options]\nLoopInterval=" + loopInterval + "\n\n" +
+                "[loop]\n", fh) != 1)
+    {
+        FileClose(fh);
+        return "";
+    }
+
+    int i;
+    for(i = 0; i < lengthof imgs; i++)
+    {
+        if(FilePuts(imgs[i][0] + ", " +
+                    imgs[i][1] + ", " +
+                    imgs[i][2] + "\n", fh) != 1)
+        {
+            FileClose(fh);
+            return "";
+        }
+    }
+
+    FileClose(fh);
+    return tmpdir + "\\" + hpsname;
+}
+
+/**
+ * 現在読み込まれているsurface定義データが必要としている
+ * ファイルのリストを取得する
+ */
+int Surface_getVSTList(string files[])
+{
+    emptyof files;
+    int n = 0;
+
+    // 定義ファイル
+    files[n] = surface_path + "surface.ini";
+    n++;
+
+    int i;
+    for(i = 0; i < lengthof surface_d; i++)
+    {
+        // ベース画像ファイル
+        files[n] = surface_getBaseImageFilePath(i);
+        n++;
+
+        // アニメーション定義
+        int j;
+        for(j = 0; j < lengthof surface_d[i][SURFACE_D_ANIM]; j++)
+        {
+            string def_anims[];
+            string def_animimgs[][];
+            if(surface_getAnimationDefinition(i, j, def_anims, def_animimgs))
+            {
+                int k;
+                for(k = 0; k < lengthof def_animimgs; k++)
+                {
+                    files[n] = def_animimgs[k][1];
+                    n++;
+                }
+            }
+        }
+
+        // アニメーション停止定義
+        for(j = 0; j < lengthof surface_d[i][SURFACE_D_ANIMSTOP]; j++)
+        {
+            string def_animstops[];
+            if(surface_getAnimationStopDefinition(i, j, def_animstops))
+            {
+                files[n] = def_animstops[0];
+                n++;
+            }
+        }
+    }
+
+    return lengthof files;
+}
+
+// ----------------------------------------------------------------------
+// surface_d accessors
+// ----------------------------------------------------------------------
+string surface_getName(int id)
+{
+    return surface_d[id][SURFACE_D_NAME][0];
+}
+
+string surface_getBaseImageFilePath(int id)
+{
+    return surface_path + surface_d[id][SURFACE_D_BASE][0];
+}
+
+/**
+ * out
+ *  0 = basename
+ *  1 = loop interval
+ *
+ * out2
+ *  n 0 = MergeXY or Merge
+ *  n 1 = image file path
+ *  n 2 = MergeXY or Merge の引数部分
+ *  :
+ */
+boolean surface_getAnimationDefinition(int id, int anim_id, string out[], string out2[][])
+{
+    emptyof out;
+    emptyof out2;
+
+    Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN, "surface_getAnimationDefinition: id=" + itoa(id) + ", anim_id=" + itoa(anim_id));
+
+    if(id >= lengthof surface_d)
+    {
+        return false;
+    }
+    if(anim_id >= lengthof surface_d[id][SURFACE_D_ANIM])
+    {
+        return false;
+    }
+
+    string in = surface_d[id][SURFACE_D_ANIM][anim_id];
+    Debug(DEBUG_LV_TRACE, SURFACE_LOGDOMAIN, "surface_getAnimationDefinition: defstr=" + in);
+
+    if("" == in || NULL == in)
+    {
+        return false;
+    }
+
+    string defs[];
+    BREGSplit("/\\:/", in, defs);
+    if(3 > lengthof defs)
+    {
+        return false;
+    }
+
+    out[0] = defs[0];
+    out[1] = defs[1];
+
+    // hoge\moge\foo0.hp3 の ～\foo までの部分
+    string imgpath = surface_path + defs[0];
+
+    string cmds[];
+    BREGSplit("/;/", defs[2], cmds);
+    if(1 > lengthof cmds)
+    {
+        return false;
+    }
+
+    int i;
+    for(i = 0; i < lengthof cmds; i++)
+    {
+        string method;
+        string args;
+
+        method = StrToken(cmds[i], "=", 0);
+        args = StrSubstring(cmds[i], StrLen(method) + 1, StrLen(cmds[i]) - 1);
+
+        int n = lengthof out2;
+        out2[n][0] = method;
+        out2[n][1] = imgpath + itoa(i) + ".hp3";
+        out2[n][2] = args;
+    }
+
+    return true;
+}
+
+/**
+ * out
+ *  0 = アニメーション停止時に表示する画像のパス
+ *  1 = 画像表示座標X
+ *  2 = 画像表示座標Y
+ */
+boolean surface_getAnimationStopDefinition(int id, int anim_id, string out[])
+{
+    emptyof out;
+
+    if(id >= lengthof surface_d)
+    {
+        return false;
+    }
+    if(anim_id >= lengthof surface_d[id][SURFACE_D_ANIMSTOP])
+    {
+        return false;
+    }
+
+    string stopimg_cfg = surface_d[id][SURFACE_D_ANIMSTOP][anim_id];
+    if("" == stopimg_cfg || NULL == stopimg_cfg)
+    {
+        return false;
+    }
+
+    string stopimg[];
+    BREGSplit("/,/", stopimg_cfg, stopimg);
+    if(lengthof stopimg > 0)
+    {
+        out[0] = surface_path + stopimg[0];
+    }
+    else
+    {
+        return false;
+    }
+
+    if(lengthof stopimg == 3)
+    {
+        out[1] = stopimg[1];
+        out[2] = stopimg[2];
+    }
+
+    return true;
+}
+
+/*
+ * surface_d[0][SURFACE_D_OFFSET][0] = 0;   // OffsetX
+ * surface_d[0][SURFACE_D_OFFSET][1] = 200; // OffsetY
+ * surface_d[0][SURFACE_D_MSGPOS][0] = 96;  // MsgBox\PositionXL
+ * surface_d[0][SURFACE_D_MSGPOS][1] = 96;  // MsgBox\PositionXR
+ * surface_d[0][SURFACE_D_MSGPOS][2] = 0;   // MsgBox\PositionY
+ */
+string surface_getOffsetX(int id)
+{
+    return surface_d[id][SURFACE_D_OFFSET][0];
+}
+string surface_getOffsetY(int id)
+{
+    return surface_d[id][SURFACE_D_OFFSET][1];
+}
+string surface_getMsgBoxPositionXL(int id)
+{
+    return surface_d[id][SURFACE_D_MSGPOS][0];
+}
+string surface_getMsgBoxPositionXR(int id)
+{
+    return surface_d[id][SURFACE_D_MSGPOS][1];
+}
+string surface_getMsgBoxPositionY(int id)
+{
+    return surface_d[id][SURFACE_D_MSGPOS][2];
+}
+
+// ----------------------------------------------------------------------
 void Surface_debug()
 {
     int i;
@@ -565,18 +857,56 @@ void Surface_debug()
 
     SetTalkWaitMode(PWS_TALK_NOWAIT);
 
-    Talk("\e");
-
-    for(i = 0; i < lengthof surface_windows; i++)
+    boolean loop = true;
+    while(loop)
     {
-        string winname = surface_windows[i];
-        int imgid = surface_current_imageset_id[i];
+        Talk("\e");
+        AddItem("List Windows")
+        {
+            for(i = 0; i < lengthof surface_windows; i++)
+            {
+                string winname = surface_windows[i];
+                int imgid = surface_current_imageset_id[i];
 
-        Talk("winid(" + itoa(i) + "): '" + winname + "' = " +
-             "imgid(" + itoa(imgid) + "): " +
-             "'" + surface_d[imgid][SURFACE_D_NAME][0] + "'\n");
+                Talk("winid(" + itoa(i) + "): '" + winname + "' = " +
+                     "imgid(" + itoa(imgid) + "): " +
+                     "'" + surface_d[imgid][SURFACE_D_NAME][0] + "'\n");
+            }
+            Talk("\p");
+        }
+        AddItem("load")
+        {
+            string dir = EditBox(PWS_INPUT_TYPE_NORMAL, 256, "img\\surface\\");
+            if(NULL != dir)
+            {
+                Surface_load(dir);
+            }
+        }
+        AddItem("showImageSet")
+        {
+            string name = EditBox(PWS_INPUT_TYPE_NORMAL, 256, "");
+            if(NULL != name)
+            {
+                Surface_showImageSet(name);
+            }
+        }
+        AddItem("getVSTList")
+        {
+            string files[];
+            Surface_getVSTList(files);
+            int i;
+            for(i = 0; i < lengthof files; i++)
+            {
+                Talk(StrReplace(files[i], "\\", "\\\\") + "\n");
+            }
+            Talk("\p");
+        }
+        AddCancelItem
+        {
+            loop = false;
+        }
+        Choice;
     }
-    Talk("\p");
 
     SetTalkWaitMode(talkwait);
 }
