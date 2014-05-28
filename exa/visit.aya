@@ -25,13 +25,9 @@
 #import "core/msgbox.h"
 #import "core/iccomm.h"
 #import "core/surface.h"
+#import "visit_common.h"
 #import "altwindow.h"
 
-
-string VISIT_PROP = "Visit";
-string VISIT_PROP_VISITING = "Visit\\Visiting";
-string VISIT_PROP_CURRENTCHAIN = "Visit\\CurrentChain";
-string VISIT_PROP_LASTCHAINPID = "Visit\\LastChainPID";
 
 int visit_sid = -1;
 int visit_auto_sid = -1;
@@ -118,6 +114,15 @@ void Visit_forceReturnExplicit()
 
 boolean visit_doVisit(int visit_sid)
 {
+    // 持って行くファイルリストを生成してセット
+    string vst = Visit_generateVSTFile();
+    if("" == vst)
+    {
+        // fail
+        return false;
+    }
+    CharaDeli_setSendDataName(visit_sid, vst);
+
     if(CharaDeli_doVisit(visit_sid) != 1)
     {
         // fail
@@ -285,12 +290,11 @@ void Visit_init()
     MakePropertyTree(VISIT_PROP);
 
     visit_sid = CharaDeli_newSession();
-    //CharaDeli_setSendDataName(visit_sid, "etc\\visitor");
-    CharaDeli_setSendDataName(visit_sid, "etc\\visitor_chain");
+    //CharaDeli_setSendDataName(visit_sid, "etc\\visitor_chain");
     CharaDeli_setDefaultSessionID(visit_sid);
 
     visit_auto_sid = CharaDeli_newSession();
-    CharaDeli_setSendDataName(visit_auto_sid, "etc\\visitor_chain");
+    //CharaDeli_setSendDataName(visit_auto_sid, "etc\\visitor_chain");
 
     if(GetProperty(VISIT_PROP + "\\TimeOut") == NULL)
     {

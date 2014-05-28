@@ -13,6 +13,7 @@
 #import "core/sprict_ict.h"
 #import "core/charadeli.h"
 #import "properties.h"
+#import "visit_common.h"
 #import "test.h"
 
 
@@ -44,6 +45,8 @@ string my_psn = "";
  */
 void VisitorStartUp(string from, string message)
 {
+    Talk("starting\p");
+
     Prop_deletePrivateTree();
     DelPropertyTree("MXkernel");
     SaveProperty();
@@ -60,9 +63,9 @@ void VisitorStartUp(string from, string message)
 
 
     MakePropertyTree("Visit");
-    if(GetProperty("Visit\\CurrentChain") == NULL)
+    if(GetProperty(VISIT_PROP_CURRENTCHAIN) == NULL)
     {
-        PutProperty("Visit\\CurrentChain", "1");
+        PutProperty(VISIT_PROP_CURRENTCHAIN, "1");
     }
     if(GetProperty("Visit\\ChainUsers") == NULL)
     {
@@ -74,7 +77,7 @@ void VisitorStartUp(string from, string message)
 
     MsgBox_setStyle("default");
     MsgBox_setSize(16, 7);
-    Surface_load("img\\surface");
+    Surface_load(Visit_getSurfacePath());
 
     Surface_setTargetWindow(PWS_WINNAME_MAIN);
     Surface_showImageSet("normal");
@@ -108,7 +111,7 @@ void VisitorStartUp(string from, string message)
                 "暇だったので{%sender}のところから勝手に遊びにきましたー。\n");
 
         // 大元に現在段数を通知
-        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 CurrentChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
+        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 CurrentChain " + GetProperty(VISIT_PROP_CURRENTCHAIN), ICCOMM_SEND_ASYNC);
     }
     else
     {
@@ -139,7 +142,7 @@ string visitor_auto_shutdown()
         ICT_runScript("\eさて、\sそろそろ帰りますねー。");
 
         // 大元にキャラデリ終了を通知
-        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 FinalChain " + GetProperty("Visit\\CurrentChain"), ICCOMM_SEND_ASYNC);
+        ICComm_sendMessage(visitor_root, visitor_rootpsn, "MSCD/1.0 FinalChain " + GetProperty(VISIT_PROP_CURRENTCHAIN), ICCOMM_SEND_ASYNC);
     }
     else
     {
@@ -386,7 +389,8 @@ boolean visitor_isTimeOut()
         timeout = "5";
     }
 
-    timeout_second = atoi(timeout) * 60;
+    //timeout_second = atoi(timeout) * 60;
+    timeout_second = 60; // for debugging
 
     if(Time() > visitor_time + timeout_second)
     {
@@ -414,7 +418,7 @@ void visitor_auto_procTimeOut()
     string next_pid = visitor_getNextStagePID();
 
     int n_chain = -1;
-    string chain = GetProperty("Visit\\CurrentChain");
+    string chain = GetProperty(VISIT_PROP_CURRENTCHAIN);
     if(chain != "" && chain != NULL)
     {
         n_chain = atoi(chain);
@@ -434,14 +438,17 @@ void visitor_auto_procTimeOut()
     }
     else
     {
-        PutProperty("Visit\\CurrentChain", itoa(n_chain + 1));
+        PutProperty(VISIT_PROP_CURRENTCHAIN, itoa(n_chain + 1));
 
         // 後段をキャラデリ準備
         // タイムアップした場合のみ行う
         visit_sid = CharaDeli_newSession();
-        CharaDeli_setSendDataName(visit_sid, "etc\\visitor_chain");
-        //CharaDeli_setSendTo(visit_sid, "naoh128"); // TODO
-        CharaDeli_setSendTo(visit_sid, next_pid);
+
+        string vst = Visit_generateVSTFile();
+        // FIXME vstが生成できているかチェック
+        CharaDeli_setSendDataName(visit_sid, vst);
+        //CharaDeli_setSendTo(visit_sid, next_pid);
+        CharaDeli_setSendTo(visit_sid, "naoh128"); // TODO
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-FromPSN", my_psn);
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-RootPSN", visitor_rootpsn);
         CharaDeli_addSendMessageHeader(visit_sid, "MSCD-Root", visitor_root);

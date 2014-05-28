@@ -1,0 +1,63 @@
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "core/lib/mxcl/pwsconst.h"
+#import "core/debug.h"
+#import "core/surface.h"
+
+
+string VISIT_PROP = "Visit";
+string VISIT_PROP_VISITING = "Visit\\Visiting";
+string VISIT_PROP_CURRENTCHAIN = "Visit\\CurrentChain";
+string VISIT_PROP_LASTCHAINPID = "Visit\\LastChainPID";
+
+string Visit_generateVSTFile()
+{
+    string surface_path = Surface_getLoadedPath();
+
+    string vst_name = "visitor";
+    string vst_src_path = "etc\\" + vst_name + "_vst.src";
+    string vst_dst_name = "local\\" + vst_name;
+    string vst_dst_path = vst_dst_name + ".vst";
+
+    string files[];
+    if(0 >= Surface_getVSTList(files))
+    {
+        return "";
+    }
+
+    if(1 != FileCopy(vst_src_path, vst_dst_path))
+    {
+        return "";
+    }
+
+    int fh;
+    fh = FileOpen(vst_dst_path, "a");
+    if(0 > fh)
+    {
+        FileDelete(vst_dst_path);
+        return "";
+    }
+
+    int i;
+    for(i = 0; i < lengthof files; i++)
+    {
+        if(1 != FilePuts(files[i] + "\n", fh))
+        {
+            FileClose(fh);
+            FileDelete(vst_dst_path);
+            return "";
+        }
+    }
+
+    FileClose(fh);
+
+    PutProperty(VISIT_PROP + "\\SurfacePath", surface_path);
+    return vst_dst_name;
+}
+
+string Visit_getSurfacePath()
+{
+    return GetProperty(VISIT_PROP + "\\SurfacePath");
+}
+
