@@ -44,7 +44,10 @@ import int LF_BIFF_OpenConfigDialog();
 
 void Test_init()
 {
-    MenuItemAdd("テストメニュー",
+    MenuItemAdd("デバッグ\nseparator",
+                PWS_MENU_SEPARATOR, 0, PWS_CB_NORMAL,
+                test_onClick, "");
+    MenuItemAdd("デバッグ\nテストメニュー",
                 PWS_MENU_NORMAL, 0, PWS_CB_NORMAL,
                 test_onClick, "");
 }
