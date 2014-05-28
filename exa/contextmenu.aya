@@ -1,0 +1,66 @@
+#import "prototype150.aya"
+#import "prototype200.aya"
+#import "prototype300.aya"
+#import "core/lib/mxcl/pwsconst.h"
+#import "core/debug.h"
+#import "core/surface.h"
+#import "core/sprict_spr.h"
+#import "properties.h"
+
+int CONTEXTMENU_ITEM_GROUPID_COSTUME = 900;
+
+string CONTEXTMENU_SURFACE_PATH_BASE = "img\\surface\\";
+
+void ContextMenu_init()
+{
+//    MenuItemAdd("CONTEXTMENU_SEPARATOR",
+//            PWS_MENU_SEPARATOR, 0, PWS_CB_NORMAL,
+//            contextmenu_onDummyClicked, "");
+
+    contextmenu_addCostumeItem("Ç¢Ç¬Ç‡ÇÃ", "basic");
+    contextmenu_addCostumeItem("êßïû", "uniform");
+}
+
+void contextmenu_addCostumeItem(string name, string surface_path)
+{
+    string item = "íÖë÷Ç¶\n" + name;
+    MenuItemAdd(item,
+            PWS_MENU_GROUP,
+            CONTEXTMENU_ITEM_GROUPID_COSTUME,
+            PWS_CB_NORMAL,
+            contextmenu_onCostumeChangeClicked,
+            surface_path);
+
+    if(Surface_getLoadedPath() == CONTEXTMENU_SURFACE_PATH_BASE + surface_path)
+    {
+        MenuItemSetState(item, true);
+    }
+}
+
+void contextmenu_onDummyClicked(string item, string param)
+{
+}
+
+void contextmenu_onCostumeChangeClicked(string item, string param)
+{
+    string path = CONTEXTMENU_SURFACE_PATH_BASE + param;
+
+    if(Surface_getLoadedPath() == path)
+    {
+        return;
+    }
+
+    if(Surface_isExist(path))
+    {
+        Surface_load(path);
+        Surface_setTargetWindow(PWS_WINNAME_MAIN);
+        Surface_showImageSet("normal");
+        Surface_playAnimation(SURFACE_ANIMATION_BLINK);
+
+        SPR_run("CostumeChanged", param);
+
+        Prop_setLastLoadedSurfacePath(Surface_getLoadedPath());
+        MenuItemSetState(item, true);
+    }
+}
+
