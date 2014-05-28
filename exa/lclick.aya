@@ -463,3 +463,21 @@ void UpdateHistory()
     HideMsgBox();
 }
 
+void cAppeared(string persona, int style)
+{
+    if(0 == style)
+    {
+        ICT_setExternalVariable("appeared_name", persona);
+        SPR_run("Appeared", persona);
+    }
+}
+
+void cDisappeared(string persona, int style)
+{
+    if(0 == style)
+    {
+        ICT_setExternalVariable("disappeared_name", persona);
+        SPR_run("Disappeared", persona);
+    }
+}
+
