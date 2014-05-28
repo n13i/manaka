@@ -42,11 +42,14 @@ string Visit_generateVSTFile()
     int i;
     for(i = 0; i < lengthof files; i++)
     {
-        if(1 != FilePuts(files[i] + "\n", fh))
+        if(1 == FileExist(files[i]))
         {
-            FileClose(fh);
-            FileDelete(vst_dst_path);
-            return "";
+            if(1 != FilePuts(files[i] + "\n", fh))
+            {
+                FileClose(fh);
+                FileDelete(vst_dst_path);
+                return "";
+            }
         }
     }
 
