@@ -11,3 +11,4 @@ string  MXCL_getFileContent(string filename);
 double  MXCL_getMoonAge(int time);
 int     MXCL_getMemberStates(string members[][], boolean only_online, boolean exclude_me);
 string  MXCL_getMemberNameFromPID(string pid);
+int     MXCL_getHTTP(string url, string data, int method, int timeout, int strcode, string &content);

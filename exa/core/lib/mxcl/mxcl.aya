@@ -42,6 +42,7 @@
  * @date 2006/12/10 関数追加: MXCL_getMoonAge
  * @date 2014/04/16 関数追加: MXCL_getMemberStates
  * @date 2014/04/28 関数追加: MXCL_getMemberNameFromPID
+ * @date 2014/05/31 関数追加: MXCL_getHTTP
  *
  * @note     可変長配列及びリファレンスを利用する関数があるため、PWS1.x 向けの
  *           PDK ではコンパイルできません。
@@ -875,3 +876,38 @@ string MXCL_getMemberNameFromPID(string pid)
 
     return name;
 }
+
+/**
+ * GetHTTPのラッパー
+ * @date 2014/05/31 作成
+ *
+ * @retval 0 成功
+ * @retval -1 GetHTTP関数の使用権限なし
+ * @retval その他 エラーコード
+ */
+int MXCL_getHTTP(string url, string data, int method, int timeout, int strcode, string &content)
+{
+    content = "";
+
+    string strcode_bak = GetProperty("VdConfig\\GetHTTPStrCode");
+    PutProperty("VdConfig\\GetHTTPStrCode", itoa(strcode));
+
+    string resp = GetHTTP(url, data, method, timeout);
+
+    PutProperty("VdConfig\\GetHTTPStrCode", strcode_bak);
+
+    if("-1" == resp)
+    {
+        // 関数の使用権限なし
+        return -1;
+    }
+
+    if("" == resp || NULL == resp)
+    {
+        return atoi(GetProperty("..\\System\\HttpResult"));
+    }
+
+    content = resp;
+    return 0;
+}
+
