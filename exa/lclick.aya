@@ -11,6 +11,7 @@
 #import "core/icon.h"
 #import "core/ui.h"
 #import "core/lib/mxcl/pwsconst.h"
+#import "core/lib/mxcl/mxcl.h"
 
 #import "visit.h"
 #import "mi.h"
@@ -467,8 +468,12 @@ void cAppeared(string persona, int style)
 {
     if(0 == style)
     {
-        ICT_setExternalVariable("appeared_name", persona);
-        SPR_run("Appeared", persona);
+        string name = getAppearedName(persona);
+        if("" != name)
+        {
+            ICT_setExternalVariable("appeared_name", name + "В≥Вс");
+            SPR_run("Appeared", persona);
+        }
     }
 }
 
@@ -476,8 +481,28 @@ void cDisappeared(string persona, int style)
 {
     if(0 == style)
     {
-        ICT_setExternalVariable("disappeared_name", persona);
-        SPR_run("Disappeared", persona);
+        string name = getAppearedName(persona);
+        if("" != name)
+        {
+            ICT_setExternalVariable("disappeared_name", name + "В≥Вс");
+            SPR_run("Disappeared", persona);
+        }
     }
+}
+
+string getAppearedName(string psn)
+{
+    string resp;
+
+    int r = MXCL_getHTTP("http://mxpj.net/psn/antenna/whois.cgi?psn=" + StrEncodeURL(psn), "", PWS_NETWORK_METHOD_GET, 2000, 0, resp);
+    if(0 == r)
+    {
+        string key = StrToken(resp, "=", 0);
+        string val = StrToken(resp, "=", 1);
+        string name = StrDecodeURL(val);
+        return name;
+    }
+
+    return "";
 }
 
