@@ -14,6 +14,8 @@
 
 string ALTWINDOW_NAME = "alt";
 
+string altwindow_visiting_pid = "@@@@INITIAL@@@@";
+
 void AltWindow_init()
 {
     if(!IsPersonaWindowExists(ALTWINDOW_NAME))
@@ -111,5 +113,26 @@ void altwindow_MouseUpL(string winname, int x, int y, string posinfname)
 boolean AltWindow_isExist()
 {
     return IsPersonaWindowExists(ALTWINDOW_NAME);
+}
+
+action altwindow_checkNewChain@(Second() % 30 == 0 && Visit_isVisiting())
+{
+    string pid = Visit_getCurrentVisitingPID();
+    if(pid != altwindow_visiting_pid)
+    {
+        if("@@@@INITIAL@@@@" != altwindow_visiting_pid)
+        {
+            string name = MXCL_getMemberNameFromPID(pid);
+            if(name != pid)
+            {
+                name = name + "(" + pid + ")";
+            }
+
+            ICT_setExternalVariable("altwindow_currentpid", name);
+            ICT_setExternalVariable("altwindow_currentchain", itoa(Visit_getCurrentChainCount()));
+            SPR_run("Visit", "visitingInfo");
+        }
+        altwindow_visiting_pid = pid;
+    }
 }
 
