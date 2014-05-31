@@ -151,7 +151,20 @@ action notification_notify@(Second() % 2 == 0 && notification_queue_count > 0)
         // 最後の通知ではないか？
         if(i < notification_queue_count - 1)
         {
-            Talk("\p");
+            // Choiceのタイムアウトを10秒に設定
+            PutProperty("VdConfig\\MsgBox\\ChoiceTimeLimit", "10000");
+            AddItem("次の通知")
+            {
+            }
+            AddCancelItem
+            {
+                if("0" != GetProperty("..\\System\\CancelStatus"))
+                {
+                    // タイムアウトした場合，未読にしておく
+                    notification_setRead(source, time, false);
+                }
+            }
+            Choice;
         }
     }
 
