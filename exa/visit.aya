@@ -49,7 +49,14 @@ boolean Visit_isVisiting()
  */
 int Visit_getCurrentChainCount()
 {
-    if(CharaDeli_getStatus(visit_auto_sid) != CHARADELI_STATUS_VISITING)
+    // 訪問中でない
+    if("0" == GetProperty(VISIT_PROP_VISITING))
+    {
+        return -1;
+    }
+
+    // 通常訪問モードである
+    if(CharaDeli_getStatus(visit_sid) == CHARADELI_STATUS_VISITING)
     {
         return -1;
     }
@@ -70,13 +77,21 @@ string Visit_getCurrentVisitingPID()
 {
     string pid = "";
 
-    if(CharaDeli_getStatus(visit_auto_sid) == CHARADELI_STATUS_VISITING)
+    if("0" == GetProperty(VISIT_PROP_VISITING))
     {
-        pid = GetProperty(VISIT_PROP_LASTCHAINPID);
+        return "";
     }
-    else if(CharaDeli_getStatus(visit_sid) == CHARADELI_STATUS_VISITING)
+
+    if(CharaDeli_getStatus(visit_sid) == CHARADELI_STATUS_VISITING)
     {
         pid = CharaDeli_getSendTo(visit_sid);
+    }
+    else
+    {
+        // 多段キャラデリ時は，CharaDeliモジュール側では
+        // 「戻ってきている」扱いになるので
+        // CharaDeli_getStatus(visit_auto_sid)でのチェックは不可
+        pid = GetProperty(VISIT_PROP_LASTCHAINPID);
     }
 
     return pid;
@@ -114,6 +129,9 @@ void Visit_forceReturnExplicit()
 
 boolean visit_doVisit(int visit_sid)
 {
+    // CurrentChainをクリアしておく
+    DelProperty(VISIT_PROP_CURRENTCHAIN);
+
     // 持って行くファイルリストを生成してセット
     string vst = Visit_generateVSTFile();
     if("" == vst)
